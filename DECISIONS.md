@@ -1,0 +1,30 @@
+# DECISIONS.md — open choices resolved during the build
+
+Per `inputs/prompt.md`: when a choice is open, pick the option most consistent with cosmo-rd, note it here, move on.
+Entries marked **[user]** were decided explicitly by the user during plan validation (2026-09-17).
+
+## Data layer (validated plan — see DATA_PLAN.md)
+
+1. **[user] R8 wiring on the public TP** — R8 (segregation of duties) fires on **seq-6 PO-DAILY-SERIES**: the weekly PriceOverride series is approved by the desk head who owns the position (same desk, no independent approver, no IPV challenge). seq-2 (VaR model change) keeps a different-function risk approver and breaks R1+R9 only. `inputs/public_true_positive_2012.csv` seq-6 `rules_broken` updated to `R3;R4;R8` so the CSV columns agree; TP acceptance set = {R1,R2,R3,R4,R5,R6,R8,R9}.
+2. **[user] R7 anchor** — encoder adds one routine MAPReview on POS-TP in 2011-Q3 (outcome 'no finding', evidenced), NOT a CSV row, so R7 is MET on POS-TP. Supporting choices: rate-shock regime marker at **2022-09-30**; POS-TP `validTo` = its transfer date (seq-15, shifted 2022-07), so R7's regime-break clause doesn't re-fire on a closed position.
+3. **[user] Unified demo clock** — `TP_CLOCK_OFFSET_YEARS` (default **10**) in `generate_data.py` shifts every POS-TP event's `at` so the case lands 2021-12 → 2023-08 inside the population window; authentic date kept in `sourceAt`, surfaced in the audit drawer and the demo-script bibliography. Offset 0 restores authentic dates.
+4. **OSBAP file** — `stage1_osbap_0k_volume_2025.zip` (daily, includes 144A via `db_type==3`); filters per DATA_PLAN §1.2; capped at ~3,000 instruments.
+5. **MarketPrice series only for position-held instruments** — the other ~2,900 instruments carry summary stats + RiskAttributes only; read-across matches attributes, not price series, so full histories would only bloat the graph.
+6. **FITRS: two snapshots, not eight** — `FULNCR_20211106_D_*` and `FULNCR_20221105_D_*`; the liquidity flag is nearly static (99.8% of matched US bonds are `Lqdty=false`) and no scenario uses its quarterly evolution. Matched bonds get the real ESMA label; unmatched get a computed tier from `pctDaysTraded` with provenance shown.
+7. **PO-DAILY-SERIES granularity** — weekly (12 nodes, Jan 6 → Mar 23), not daily: keeps the S2 timeline readable, still trips R4's windowed count.
+8. **Dual ingest artifacts** — `data/layers/*.json` + fixed `UNWIND` queries for the UI-triggered layer-by-layer ingest (prompt requirement, deviation from cosmo-rd which loads via CLI/MCP only); `data/load_data.cypher` kept for cypher-shell/MCP parity with cosmo-rd.
+9. **Gap query single source of truth** — `data/gap_query.cypher`, imported verbatim by `src/lib/queries.ts`, `mcp_server.py`, and `tests/`; GovernanceGap nodes materialised by a thin write wrapper around the same text; Policy panel edits ControlObligation properties and re-runs the wrapper (no data regeneration).
+10. **Env plumbing** — single source `inputs/.env` (user-provided); `make env` derives root `.env` and `app/.env` (`VITE_NEO4J_*`, `VITE_GEMINI_API_KEY`). All `.env` files gitignored.
+
+## Build (running log — appended as the build proceeds)
+
+11. **Per-component CSS files** (`explore.css`, `scenarios.css`, `chat.css`) instead of cosmo-rd's single 1.3k-line App.css — App.css keeps the chrome, drawer and shared primitives (.panel, .pill, .data-table, .business-problem).
+12. **S1 conjunction score** = (PnL signals + overrides + methodology changes) × (distinct broken rules) — deliberately simple and explainable, stated on screen. POS-TP scores 152 vs 24 for the runner-up.
+13. **S1 community detection** — `gds.louvain.write` over an undirected 9-label projection (positions, people, desks, events); projection dropped after use; selected position's community coloured, rest greyed.
+14. **S3 pattern content** — REQUIRES → methodologyFamily, liquidityTier, maturityBucket RiskAttributes + the 8 abstract GapClasses of POS-TP; deskId and issuerSector deliberately excluded from the default pattern (instrument-agnostic by construction; the presenter can add them live in S4).
+15. **S4 link prediction** — `gds.nodeSimilarity.stream` (topK 10) over the Position–RiskAttribute bipartite projection; because every position has exactly one attribute per type, a held-out link leaves a typed hole and prediction targets those holes; recovery = 5/6 in top-3, shown with the on-screen held-out-ground-truth statement.
+16. **Policy edits invalidate, not auto-rerun** — applying a policy change clears scenario results and the presenter re-runs live ("the answer changes on the next run", per the prompt).
+17. **Any S4 row click jumps to S2**, not only POS-FP — the FP is badged "assessed FP" so the presenter lands the exculpatory beat; S2 still requires a manual "Reconstruct" click (queries run in front of the audience, never pre-canned).
+18. **Assistant** — 7 typed tools (list_positions, timeline, expected_controls, who_approved, divergence, read_across, policy_params) shared verbatim between `assistantTools.ts` (Gemini function declarations) and `mcp_server.py` (FastMCP); per-call `cypher_audit_trail` captured from the audit log and fed back to the model with instructions not to echo it.
+19a. **NVL layout = `d3Force`** — the default cyto force layout computes once and does not re-simulate when elements are added through the React wrapper (nodes stacked at the origin until dragged). GraphView uses `d3ForceLayoutType` (continuous simulation), seeds deterministic scattered positions for first-seen nodes, and re-applies `setLayout` when the node SET changes — colour-only updates (S1 community highlighting) keep positions.
+19. **TP clock offset** (user amendment (b)) — `TP_CLOCK_OFFSET_YEARS=10` implemented in `generate_data.py`; authentic dates kept in `sourceAt`, citations in `sourceRef`; offset 0 restores authentic dates. Case coexists with the 2020–2022 population and the 2022-09-30 regime marker; POS-TP `validTo` = its (shifted) transfer date so R7's regime clause doesn't re-fire on a closed position.

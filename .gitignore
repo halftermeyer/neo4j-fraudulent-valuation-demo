@@ -1,0 +1,25 @@
+# secrets
+.env
+app/.env
+inputs/.env
+
+# python
+__pycache__/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# node
+node_modules/
+app/dist/
+
+# data caches and generated artifacts (replay with `make data`)
+data/cache/
+data/layers/
+data/load_data.cypher
+data/holdout_links.json
+app/public/data/
+
+# misc
+.DS_Store
+*.part

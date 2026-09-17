@@ -1,0 +1,24 @@
+[project]
+name = "neo4j-fraudulent-valuation-demo"
+version = "0.1.0"
+description = "Mismarking (fraudulent valuation) detection demo on Neo4j — data pipeline, MCP server, acceptance tests"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "requests>=2.32",
+    "lxml>=5.2",
+    "openpyxl>=3.1",
+    "neo4j>=5.28",
+    "python-dotenv>=1.0",
+    "mcp>=1.2,<2",
+    "google-genai>=2.24.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
