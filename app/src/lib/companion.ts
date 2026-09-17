@@ -312,7 +312,8 @@ export async function askAboutThis(question: string): Promise<void> {
         const fc = part.functionCall!;
         let result: unknown;
         try {
-          result = await executeTool(fc.name ?? "", (fc.args ?? {}) as Record<string, unknown>);
+          // tools return {rows, graph}; the model only needs the rows
+          result = (await executeTool(fc.name ?? "", (fc.args ?? {}) as Record<string, unknown>)).rows;
         } catch (e) {
           result = { error: (e as Error).message };
         }

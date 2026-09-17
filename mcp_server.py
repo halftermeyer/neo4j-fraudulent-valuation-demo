@@ -85,9 +85,76 @@ def run_cypher(query: str, params: dict | None = None) -> list[dict]:
         return [_to_plain(dict(r)) for r in session.run(query, params or {})]
 
 
-def _build_response(results, label: str = "results") -> str:
+def _build_response(results, label: str = "results", graph: dict | None = None) -> str:
     audit = "\n\n".join(f"// Step {i + 1}\n{q}" for i, q in enumerate(_get_trail()))
-    return json.dumps({label: results, "cypher_audit_trail": audit}, indent=2, default=str)
+    payload = {label: results, "cypher_audit_trail": audit}
+    if graph is not None:
+        payload["graph"] = graph  # same shape as app/src/lib/assistantTools.ts ToolResult.graph
+    return json.dumps(payload, indent=2, default=str)
+
+
+# ── graph-shaped payloads (mirror of assistantTools.ts builders) ─────────────
+
+def _timeline_graph(position_id: str, rows: list[dict]) -> dict:
+    events = [r for r in rows if r.get("label") not in ("MarketPrice", "Curve")][:60]
+    nodes = [{"id": position_id, "label": "Position", "caption": position_id, "order": -1}] + [
+        {"id": e["id"], "label": e["label"],
+         "caption": f"{e['label']} {str(e['at'])[:10]}", "order": i}
+        for i, e in enumerate(events)
+    ]
+    rels = [{"id": f"next-{i}", "from": events[i]["id"], "to": e["id"], "type": "NEXT"}
+            for i, e in enumerate(events[1:])]
+    if events:
+        rels.insert(0, {"id": "pos-first", "from": position_id, "to": events[0]["id"],
+                        "type": "FIRST_EVENT"})
+    return {"nodes": nodes, "rels": rels, "ordered": True}
+
+
+def _expected_controls_graph(position_id: str, rows: list[dict]) -> dict:
+    nodes = {position_id: {"id": position_id, "label": "Position", "caption": position_id}}
+    rels = []
+    for i, r in enumerate(rows[:60]):
+        rule = r["ruleId"]
+        nodes.setdefault(rule, {"id": rule, "label": "ControlObligation",
+                                "caption": f"{rule} {r['ruleName']}"})
+        trig = r.get("triggerEventId")
+        if trig and trig != position_id:
+            if trig not in nodes:
+                nodes[trig] = {"id": trig, "label": r.get("triggerLabel") or "Event",
+                               "caption": trig}
+                rels.append({"id": f"t-{i}", "from": position_id, "to": trig, "type": "HAS_EVENT"})
+            rels.append({"id": f"s-{i}", "from": trig, "to": rule, "type": r["status"]})
+    return {"nodes": list(nodes.values()), "rels": rels}
+
+
+def _who_approved_graph(event_id: str, rows: list[dict]) -> dict:
+    nodes = {event_id: {"id": event_id, "label": "Event", "caption": event_id}}
+    rels = []
+    for i, r in enumerate(rows):
+        a = str(r.get("approvalId") or f"approval-{i}")
+        nodes[a] = {"id": a, "label": "Approval", "caption": a}
+        rels.append({"id": f"a-{i}", "from": event_id, "to": a, "type": "APPROVED_BY"})
+        if r.get("approver"):
+            p = str(r["approver"])
+            nodes[p] = {"id": p, "label": "Person",
+                        "caption": f"{p} ({r.get('approverRole') or '?'})"}
+            rels.append({"id": f"p-{i}", "from": a, "to": p, "type": "APPROVED_BY"})
+            if r.get("approverDesk"):
+                d = str(r["approverDesk"])
+                nodes[d] = {"id": d, "label": "Desk", "caption": d}
+                rels.append({"id": f"d-{i}", "from": p, "to": d, "type": "ON_DESK"})
+    return {"nodes": list(nodes.values()), "rels": rels}
+
+
+def _read_across_graph(rows: list[dict]) -> dict:
+    nodes, rels = {}, []
+    for r in rows[:15]:
+        pid = r["positionId"]
+        nodes[pid] = {"id": pid, "label": "Position", "caption": pid}
+        for rule in r.get("rules") or []:
+            nodes.setdefault(rule, {"id": rule, "label": "GovernanceGap", "caption": rule})
+            rels.append({"id": f"{pid}-{rule}", "from": pid, "to": rule, "type": "HAS_GAP"})
+    return {"nodes": list(nodes.values()), "rels": rels}
 
 
 # ── plain functions (importable by tests without starting the server) ────────
@@ -231,7 +298,8 @@ def timeline(positionId: str) -> str:
     (methodology changes, overrides, IPV/MAP reviews, P&L signals, approvals,
     escalations, incident, corrective actions), in event-time order."""
     _reset_trail()
-    return _build_response(tool_timeline(positionId), "timeline")
+    rows = tool_timeline(positionId)
+    return _build_response(rows, "timeline", graph=_timeline_graph(positionId, rows))
 
 
 @mcp.tool()
@@ -240,7 +308,8 @@ def expected_controls(positionId: str, asOf: str | None = None) -> str:
     position: which control should have fired, when it was due, what was observed,
     status MET | LATE | MISSED | PENDING. LATE and MISSED are governance gaps."""
     _reset_trail()
-    return _build_response(tool_expected_controls(positionId, asOf), "evaluations")
+    rows = tool_expected_controls(positionId, asOf)
+    return _build_response(rows, "evaluations", graph=_expected_controls_graph(positionId, rows))
 
 
 @mcp.tool()
@@ -248,7 +317,8 @@ def who_approved(eventId: str) -> str:
     """Who approved a MethodologyChange/PriceOverride: role, desk, same-desk flag
     (segregation of duties, R8) and whether the approval is evidenced (R9)."""
     _reset_trail()
-    return _build_response(tool_who_approved(eventId), "approvals")
+    rows = tool_who_approved(eventId)
+    return _build_response(rows, "approvals", graph=_who_approved_graph(eventId, rows))
 
 
 @mcp.tool()
@@ -263,7 +333,8 @@ def read_across(minRules: int = 2) -> str:
     """Positions (excluding confirmed incidents) accumulating governance gaps on
     at least minRules distinct obligations — partial matches / early detection."""
     _reset_trail()
-    return _build_response(tool_read_across(minRules), "matches")
+    rows = tool_read_across(minRules)
+    return _build_response(rows, "matches", graph=_read_across_graph(rows))
 
 
 @mcp.tool()

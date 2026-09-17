@@ -179,6 +179,78 @@ table.data-table tr.clickable:hover {
   margin-bottom: 4px;
 }
 
+/* ── assistant answer visualisation (graph/table toggle, markdown, grid links) ── */
+
+.chat-markdown table {
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin: 8px 0;
+}
+
+.chat-markdown th {
+  text-align: left;
+  color: #44546e;
+  border-bottom: 2px solid #dde3ec;
+  padding: 4px 10px 4px 0;
+}
+
+.chat-markdown td {
+  border-bottom: 1px solid #eef1f6;
+  padding: 4px 10px 4px 0;
+  vertical-align: top;
+}
+
+.chat-markdown code {
+  background: #eef2f9;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.78rem;
+}
+
+.chat-markdown p { margin: 6px 0; }
+.chat-markdown ol, .chat-markdown ul { margin: 6px 0; padding-left: 20px; }
+
+.answer-viz {
+  margin-top: 10px;
+  border-top: 1px solid #dde3ec;
+  padding-top: 8px;
+}
+
+.answer-viz-toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.answer-viz-toggle button {
+  background: #eef2f9;
+  border: 1px solid #c6d4e8;
+  color: #17457e;
+  border-radius: 5px;
+  padding: 2px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.answer-viz-toggle button.active { background: #0b297d; color: #fff; border-color: #0b297d; }
+
+.answer-viz-table { margin-bottom: 10px; }
+
+.result-grid { max-height: 340px; overflow: auto; font-size: 0.8rem; }
+
+.grid-node-link {
+  background: none;
+  border: none;
+  color: #006fd6;
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 0.76rem;
+  cursor: pointer;
+  padding: 0 4px 0 0;
+  text-decoration: underline;
+}
+
 /* ── AI companion panel ── */
 
 .header-right {

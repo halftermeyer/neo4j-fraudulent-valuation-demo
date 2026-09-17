@@ -245,6 +245,11 @@ Reconstruct what happened to POS-TP, in order, and tell me which control should 
 
 The model composes only typed tools over the same query functions the tabs use — no
 free-form text-to-Cypher — and every statement it triggers lands in the audit drawer.
+Under the answer, flip the **graph / table** toggle: the same subgraph the tools
+returned, in the scenarios' colours with the timeline pinned left-to-right in event
+time — or sortable grids whose event ids jump straight into Explore's node
+inspector. The suggestion chips never disappear: the one you clicked is replaced by
+a contextual follow-up, so the conversation path is always one click away.
 *Talking point:* "This was one of your validation criteria: a natural-language,
 chronological investigation. Note that it answers with control obligation IDs from
 your own policy, and that the drawer shows exactly what it ran — the assistant has

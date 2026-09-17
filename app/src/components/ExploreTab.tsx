@@ -14,6 +14,7 @@ import {
   type LayerName,
   type PositionSummary,
 } from "../lib/queries";
+import { consumePendingNode, onExploreLink } from "../lib/exploreLink";
 import GraphView, { type GNode, type GRel } from "./GraphView";
 import "./explore.css";
 
@@ -165,6 +166,41 @@ export default function ExploreTab() {
     setChart([]);
     setStep(1);
   };
+
+  // ── deep link from the Assistant (event-id links / answer-graph clicks) ──
+  const [inspectId, setInspectId] = useState<string | null>(null);
+
+  const handleDeepLink = useCallback(async () => {
+    const nodeId = consumePendingNode();
+    if (!nodeId) return;
+    const rows = await runQuery<{ label: string | null; positionId: string | null }>(
+      `MATCH (n) WHERE n.id = $id
+       RETURN [l IN labels(n) WHERE l <> 'Event'][0] AS label,
+              CASE WHEN n:Position THEN n.id ELSE n.positionId END AS positionId`,
+      { id: nodeId },
+    );
+    const r = rows[0];
+    if (!r) return;
+    if (r.positionId) setSelected(r.positionId);
+    // put the linked node (and its position) on the canvas, then open the inspector
+    setNodes((prev) => {
+      const next = new Map(prev);
+      if (r.positionId && !next.has(r.positionId)) {
+        next.set(r.positionId, { id: r.positionId, label: "Position", caption: r.positionId, size: 38 });
+      }
+      if (!next.has(nodeId)) {
+        next.set(nodeId, { id: nodeId, label: r.label ?? "Event", caption: nodeId });
+      }
+      return next;
+    });
+    setStep((s) => Math.max(s, 1));
+    setInspectId(nodeId);
+  }, []);
+
+  useEffect(() => {
+    void handleDeepLink(); // pending id set before the tab mounted
+    return onExploreLink(() => void handleDeepLink()); // set while already mounted
+  }, [handleDeepLink]);
 
   const addStructure = async () => {
     const rows = await withGroup(`Explore: structure of ${selected}`, () =>
@@ -398,7 +434,7 @@ export default function ExploreTab() {
           {step >= 3 && chart.length > 1 && <PriceChart rows={chart} />}
 
           {graphNodes.length > 0 && (
-            <GraphView height={460} nodes={graphNodes} rels={graphRels} />
+            <GraphView autoInspectId={inspectId} height={460} nodes={graphNodes} rels={graphRels} />
           )}
         </div>
       )}

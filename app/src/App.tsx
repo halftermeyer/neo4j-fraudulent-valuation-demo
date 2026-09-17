@@ -7,6 +7,7 @@ import ExploreTab from "./components/ExploreTab";
 import QueryAuditDrawer from "./components/QueryAuditDrawer";
 import ScenariosTab from "./components/ScenariosTab";
 import { getCompanionState, onCompanionChange, toggleCompanion } from "./lib/companion";
+import { onExploreLink } from "./lib/exploreLink";
 
 type TabId = "explore" | "scenarios" | "assistant";
 
@@ -18,6 +19,9 @@ export default function App() {
     () => onCompanionChange(() => setCompanionOpen(getCompanionState().open)),
     [],
   );
+
+  // "open this node in Explore" deep links (Assistant answers, DataGrid ids)
+  useEffect(() => onExploreLink(() => setTab("explore")), []);
 
   return (
     <div className={`app-container ${companionOpen ? "companion-open" : ""}`}>

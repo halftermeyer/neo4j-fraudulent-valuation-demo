@@ -97,7 +97,14 @@ GEMINI_API_KEY=...          # Assistant tab + LLM test
 - **Assistant** — not text-to-Cypher: 7 typed tools over the same query functions
   (`timeline`, `expected_controls`, `who_approved`, `divergence`, `read_across`,
   `policy_params`, `list_positions`), composed by Gemini; every generated Cypher
-  lands in the audit drawer.
+  lands in the audit drawer. Answers render as sanitised markdown; each answer
+  carries a **graph / table toggle** — the returned subgraph in the same NVL
+  component and colours as the scenarios (timelines pinned left-to-right in
+  event time), or the tool rows as sortable Needle DataGrids whose event ids
+  deep-link into Explore (tab switch + node inspector). Suggestion chips persist
+  for the whole session; the clicked one is replaced by a contextual follow-up,
+  all answerable by the typed tools. Tools return `{rows, graph}` — the same
+  shape `mcp_server.py` emits.
 - **✦ AI companion** (side panel, top-bar toggle, persistent across tabs) —
   grounded explanations of what is on screen. Every **Explain** button (scenario
   cards, S2 gap rows, S4 match rows, the S3 pattern, the selected node) sends

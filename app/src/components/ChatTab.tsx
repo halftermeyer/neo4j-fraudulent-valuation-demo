@@ -2,22 +2,68 @@
 // assistantTools.ts. Every Cypher the tools run lands in the audit drawer;
 // the per-call trail is also fed back to the model as cypher_audit_trail
 // (which it is instructed never to echo).
+//
+// Answers render as sanitised markdown (react-markdown, no raw HTML); each
+// answer carries its tool results as a graph/table toggle — the same NVL
+// component and colours as the scenarios, timelines pinned left-to-right in
+// event time — and a persistent row of suggestion chips whose clicked entry
+// is replaced by a contextual follow-up (all answerable by the typed tools).
 
 import { GoogleGenAI, type Content } from "@google/genai";
 import { useRef, useState } from "react";
-import { executeTool, SYSTEM_PROMPT, TOOL_DECLARATIONS } from "../lib/assistantTools";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import {
+  executeTool,
+  SYSTEM_PROMPT,
+  TOOL_DECLARATIONS,
+  type GraphPayload,
+} from "../lib/assistantTools";
+import { openInExplore } from "../lib/exploreLink";
 import { getQueryLog } from "../lib/neo4j";
+import GraphView, { type GNode, type GRel } from "./GraphView";
+import ResultGrid from "./ResultGrid";
 import "./chat.css";
 
 const MODEL = "gemini-2.5-flash";
 const MAX_ITERATIONS = 6;
 
-const SUGGESTIONS = [
+// ── persistent suggestion chips with contextual follow-ups ──────────────────
+// Every hint is answerable by the typed tools (timeline, expected_controls,
+// who_approved, divergence, read_across, policy_params, list_positions).
+
+const INITIAL_HINTS = [
   "Reconstruct what happened to POS-TP, in order, and tell me which control should have fired",
   "Why is POS-FP not an incident?",
   "Which positions partially match the confirmed pattern today?",
   "What changes if the IPV divergence threshold is 100 bps?",
 ];
+
+const FOLLOW_UPS: Record<string, string> = {
+  [INITIAL_HINTS[0]]: "Which of these controls should have fired on POS-TP, and when exactly?",
+  "Which of these controls should have fired on POS-TP, and when exactly?":
+    "Who approved the methodology change MC-VAR-2012, and were they independent?",
+  "Who approved the methodology change MC-VAR-2012, and were they independent?":
+    "Does any other position look like POS-TP today?",
+  "Does any other position look like POS-TP today?":
+    "Show the observed-vs-proxy divergence history of POS-TP",
+  [INITIAL_HINTS[1]]: "Which controls did fire on POS-FP, in chronological order?",
+  "Which controls did fire on POS-FP, in chronological order?":
+    "Who approved the price overrides on POS-FP?",
+  [INITIAL_HINTS[2]]: "Reconstruct the timeline of the top partial match",
+  "Reconstruct the timeline of the top partial match":
+    "Which desks concentrate the current governance gaps?",
+  [INITIAL_HINTS[3]]: "List the current parameters of all nine control obligations",
+  "List the current parameters of all nine control obligations":
+    "Which positions would still be flagged with only 3 broken rules or more?",
+};
+
+interface ToolViz {
+  toolName: string;
+  args: string;
+  rows: Record<string, unknown>[];
+  graph?: GraphPayload;
+}
 
 interface ChatMessage {
   role: "user" | "assistant" | "tool" | "error";
@@ -25,42 +71,89 @@ interface ChatMessage {
   toolName?: string;
   toolArgs?: string;
   rowCount?: number;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-// minimal markdown: code fences, inline code, bold, italics, headings, lists, tables stay preformatted
-function formatMarkdown(raw: string): string {
-  let s = escapeHtml(raw);
-  s = s.replace(/```([\s\S]*?)```/g, (_, code) => `<pre>${code}</pre>`);
-  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
-  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  s = s.replace(/(^|\n)### (.*)/g, "$1<strong>$2</strong>");
-  s = s.replace(/(^|\n)## (.*)/g, "$1<strong>$2</strong>");
-  s = s.replace(/(^|\n)[-•] (.*)/g, "$1&nbsp;• $2");
-  s = s.replace(/\n/g, "<br/>");
-  return s;
+  viz?: ToolViz[]; // attached to assistant answers
 }
 
 function trailFromLog(startIdx: number): string {
   return getQueryLog()
     .slice(startIdx)
-    .map(
-      (e, i) =>
-        `// Step ${i + 1} (${e.durationMs}ms, ${e.rowCount} rows)\n${e.cypher}`,
-    )
+    .map((e, i) => `// Step ${i + 1} (${e.durationMs}ms, ${e.rowCount} rows)\n${e.cypher}`)
     .join("\n\n");
 }
+
+// ── answer visualisation: graph / table toggle ───────────────────────────────
+
+function graphToView(viz: ToolViz[]): { nodes: GNode[]; rels: GRel[] } {
+  const nodes = new Map<string, GNode>();
+  const rels: GRel[] = [];
+  viz.forEach((v, vi) => {
+    if (!v.graph) return;
+    const ordered = v.graph.ordered === true;
+    v.graph.nodes.forEach((n) => {
+      if (nodes.has(n.id)) return;
+      const g: GNode = { id: n.id, label: n.label, caption: n.caption ?? n.id };
+      if (ordered && n.order !== undefined) {
+        // event-time axis, left-to-right; zigzag y so captions stay readable
+        g.x = n.order === -1 ? -140 : n.order * 120;
+        g.y = n.order === -1 ? 0 : (n.order % 2 === 0 ? -45 : 45);
+        g.pinned = true;
+      }
+      nodes.set(n.id, g);
+    });
+    v.graph.rels.forEach((r, i) => rels.push({ id: `v${vi}-${r.id}-${i}`, from: r.from, to: r.to, type: r.type }));
+  });
+  return { nodes: [...nodes.values()], rels };
+}
+
+function AnswerViz({ viz }: { viz: ToolViz[] }) {
+  const [mode, setMode] = useState<"graph" | "table">("graph");
+  const graph = graphToView(viz);
+  const hasGraph = graph.nodes.length > 0;
+  const effective = hasGraph ? mode : "table";
+  return (
+    <div className="answer-viz">
+      <div className="answer-viz-toggle">
+        {hasGraph && (
+          <button className={effective === "graph" ? "active" : ""} onClick={() => setMode("graph")}>
+            graph
+          </button>
+        )}
+        <button className={effective === "table" ? "active" : ""} onClick={() => setMode("table")}>
+          table
+        </button>
+        <span className="hint-inline">
+          {viz.map((v) => v.toolName).join(" · ")} — click a node or an id to open it in Explore
+        </span>
+      </div>
+      {effective === "graph" ? (
+        <GraphView
+          height={320}
+          nodes={graph.nodes}
+          onNodeClick={(id) => openInExplore(id)}
+          rels={graph.rels}
+        />
+      ) : (
+        viz
+          .filter((v) => v.rows.length > 0)
+          .map((v, i) => (
+            <div className="answer-viz-table" key={i}>
+              <div className="hint">
+                {v.toolName}({v.args})
+              </div>
+              <ResultGrid rows={v.rows} />
+            </div>
+          ))
+      )}
+    </div>
+  );
+}
+
+// ── the tab ──────────────────────────────────────────────────────────────────
 
 export default function ChatTab() {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hints, setHints] = useState<string[]>(INITIAL_HINTS);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const historyRef = useRef<Content[]>([]);
@@ -79,11 +172,30 @@ export default function ChatTab() {
 
   const push = (m: ChatMessage) => setMessages((prev) => [...prev, m]);
 
+  const advanceHints = (clicked: string) => {
+    setHints((prev) => {
+      const idx = prev.indexOf(clicked);
+      if (idx === -1) return prev; // typed question — chips unchanged
+      const next = [...prev];
+      const followUp = FOLLOW_UPS[clicked];
+      if (followUp && !prev.includes(followUp)) {
+        next[idx] = followUp;
+      } else {
+        // exhausted chain: fall back to any initial hint not currently shown
+        const fresh = INITIAL_HINTS.find((h) => !prev.includes(h) && h !== clicked);
+        if (fresh) next[idx] = fresh;
+      }
+      return next;
+    });
+  };
+
   async function ask(question: string) {
     if (busy || !question.trim()) return;
     setInput("");
     push({ role: "user", text: question });
+    advanceHints(question);
     setBusy(true);
+    const viz: ToolViz[] = [];
     try {
       const ai = new GoogleGenAI({ apiKey });
       historyRef.current.push({ role: "user", parts: [{ text: question }] });
@@ -104,7 +216,7 @@ export default function ChatTab() {
 
         const calls = (content.parts ?? []).filter((p) => p.functionCall);
         if (calls.length === 0) {
-          push({ role: "assistant", text: resp.text ?? "(no answer)" });
+          push({ role: "assistant", text: resp.text ?? "(no answer)", viz: [...viz] });
           break;
         }
 
@@ -118,21 +230,20 @@ export default function ChatTab() {
           let rowCount = 0;
           try {
             const result = await executeTool(name, args);
-            rowCount = Array.isArray(result) ? result.length : 1;
-            payload = JSON.stringify({ result, cypher_audit_trail: trailFromLog(logStart) });
+            rowCount = result.rows.length;
+            viz.push({
+              toolName: name,
+              args: JSON.stringify(args),
+              rows: result.rows as Record<string, unknown>[],
+              graph: result.graph,
+            });
+            // the model gets the rows (not the display graph) + the audit trail
+            payload = JSON.stringify({ result: result.rows, cypher_audit_trail: trailFromLog(logStart) });
           } catch (e) {
             payload = JSON.stringify({ error: (e as Error).message });
           }
-          push({
-            role: "tool",
-            text: "",
-            toolName: name,
-            toolArgs: JSON.stringify(args),
-            rowCount,
-          });
-          responses.parts!.push({
-            functionResponse: { name, response: { result: payload } },
-          });
+          push({ role: "tool", text: "", toolName: name, toolArgs: JSON.stringify(args), rowCount });
+          responses.parts!.push({ functionResponse: { name, response: { result: payload } } });
         }
         historyRef.current.push(responses);
         if (i === MAX_ITERATIONS - 1) {
@@ -146,6 +257,16 @@ export default function ChatTab() {
     }
   }
 
+  const chips = (
+    <div className="chat-suggestions">
+      {hints.map((s) => (
+        <button className="chat-chip" disabled={busy} key={s} onClick={() => ask(s)}>
+          {s}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="chat-container">
       <div className="business-problem">
@@ -157,15 +278,6 @@ export default function ChatTab() {
       </div>
 
       <div className="chat-messages">
-        {messages.length === 0 && (
-          <div className="chat-suggestions">
-            {SUGGESTIONS.map((s) => (
-              <button className="chat-chip" key={s} onClick={() => ask(s)}>
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
         {messages.map((m, i) =>
           m.role === "tool" ? (
             <div className="chat-tool" key={i}>
@@ -176,7 +288,12 @@ export default function ChatTab() {
           ) : (
             <div className={`chat-bubble chat-${m.role}`} key={i}>
               {m.role === "assistant" ? (
-                <div dangerouslySetInnerHTML={{ __html: formatMarkdown(m.text) }} />
+                <>
+                  <div className="chat-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                  </div>
+                  {m.viz && m.viz.length > 0 && <AnswerViz viz={m.viz} />}
+                </>
               ) : (
                 m.text
               )}
@@ -184,6 +301,7 @@ export default function ChatTab() {
           ),
         )}
         {busy && <div className="chat-bubble chat-assistant chat-thinking">Investigating…</div>}
+        {chips}
       </div>
 
       <div className="chat-input-row">

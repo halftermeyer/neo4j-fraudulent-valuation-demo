@@ -88,27 +88,150 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
 ];
 
+// ── graph-shaped payloads ────────────────────────────────────────────────────
+// Tools return {rows, graph}: rows go to the model and the DataGrid; graph is
+// the returned subgraph the answer renders with the scenarios' NVL component.
+// mcp_server.py mirrors the same shape (see its _graphify).
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  caption?: string;
+  order?: number; // event-time rank — timelines render left-to-right by it
+}
+
+export interface GraphRel {
+  id: string;
+  from: string;
+  to: string;
+  type: string;
+}
+
+export interface GraphPayload {
+  nodes: GraphNode[];
+  rels: GraphRel[];
+  ordered?: boolean; // true = pin nodes on an event-time axis
+}
+
+export interface ToolResult {
+  rows: unknown[];
+  graph?: GraphPayload;
+}
+
+function timelineGraph(positionId: string, rows: Awaited<ReturnType<typeof timeline>>): GraphPayload {
+  // MarketPrice/Curve points belong to the chart, not the event chain render
+  const events = rows.filter((e) => e.label !== "MarketPrice" && e.label !== "Curve").slice(0, 60);
+  const nodes: GraphNode[] = [
+    { id: positionId, label: "Position", caption: positionId, order: -1 },
+    ...events.map((e, i) => ({
+      id: e.id,
+      label: e.label,
+      caption: `${e.label} ${String(e.at).slice(0, 10)}`,
+      order: i,
+    })),
+  ];
+  const rels: GraphRel[] = events.slice(1).map((e, i) => ({
+    id: `next-${i}`,
+    from: events[i].id,
+    to: e.id,
+    type: "NEXT",
+  }));
+  if (events[0]) {
+    rels.unshift({ id: "pos-first", from: positionId, to: events[0].id, type: "FIRST_EVENT" });
+  }
+  return { nodes, rels, ordered: true };
+}
+
+function expectedControlsGraph(positionId: string, rows: Awaited<ReturnType<typeof expectedControls>>): GraphPayload {
+  const nodes = new Map<string, GraphNode>([
+    [positionId, { id: positionId, label: "Position", caption: positionId }],
+  ]);
+  const rels: GraphRel[] = [];
+  rows.slice(0, 60).forEach((r, i) => {
+    if (!nodes.has(r.ruleId)) {
+      nodes.set(r.ruleId, { id: r.ruleId, label: "ControlObligation", caption: `${r.ruleId} ${r.ruleName}` });
+    }
+    if (r.triggerEventId && r.triggerEventId !== positionId) {
+      if (!nodes.has(r.triggerEventId)) {
+        nodes.set(r.triggerEventId, {
+          id: r.triggerEventId,
+          label: r.triggerLabel ?? "Event",
+          caption: `${r.triggerEventId}`,
+        });
+        rels.push({ id: `t-${i}`, from: positionId, to: r.triggerEventId, type: "HAS_EVENT" });
+      }
+      rels.push({ id: `s-${i}`, from: r.triggerEventId, to: r.ruleId, type: r.status });
+    }
+  });
+  return { nodes: [...nodes.values()], rels };
+}
+
+function whoApprovedGraph(eventId: string, rows: Awaited<ReturnType<typeof whoApproved>>): GraphPayload {
+  const nodes = new Map<string, GraphNode>([[eventId, { id: eventId, label: "Event", caption: eventId }]]);
+  const rels: GraphRel[] = [];
+  (rows as Record<string, unknown>[]).forEach((r, i) => {
+    const approvalId = String(r.approvalId ?? `approval-${i}`);
+    nodes.set(approvalId, { id: approvalId, label: "Approval", caption: approvalId });
+    rels.push({ id: `a-${i}`, from: eventId, to: approvalId, type: "APPROVED_BY" });
+    if (r.approver) {
+      const person = String(r.approver);
+      nodes.set(person, { id: person, label: "Person", caption: `${person} (${r.approverRole ?? "?"})` });
+      rels.push({ id: `p-${i}`, from: approvalId, to: person, type: "APPROVED_BY" });
+      if (r.approverDesk) {
+        const desk = String(r.approverDesk);
+        nodes.set(desk, { id: desk, label: "Desk", caption: desk });
+        rels.push({ id: `d-${i}`, from: person, to: desk, type: "ON_DESK" });
+      }
+    }
+  });
+  return { nodes: [...nodes.values()], rels };
+}
+
+function readAcrossGraph(rows: Awaited<ReturnType<typeof nearMisses>>): GraphPayload {
+  const nodes = new Map<string, GraphNode>();
+  const rels: GraphRel[] = [];
+  (rows as { positionId: string; rules: string[] }[]).slice(0, 15).forEach((r) => {
+    nodes.set(r.positionId, { id: r.positionId, label: "Position", caption: r.positionId });
+    r.rules.forEach((rule) => {
+      if (!nodes.has(rule)) nodes.set(rule, { id: rule, label: "GovernanceGap", caption: rule });
+      rels.push({ id: `${r.positionId}-${rule}`, from: r.positionId, to: rule, type: "HAS_GAP" });
+    });
+  });
+  return { nodes: [...nodes.values()], rels };
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
-): Promise<unknown> {
+): Promise<ToolResult> {
   switch (name) {
     case "list_positions":
-      return listPositions();
-    case "timeline":
-      return timeline(String(args.positionId));
-    case "expected_controls":
-      return expectedControls(String(args.positionId), {
+      return { rows: await listPositions() };
+    case "timeline": {
+      const positionId = String(args.positionId);
+      const rows = await timeline(positionId);
+      return { rows, graph: timelineGraph(positionId, rows) };
+    }
+    case "expected_controls": {
+      const positionId = String(args.positionId);
+      const rows = await expectedControls(positionId, {
         asOf: args.asOf ? String(args.asOf) : undefined,
       });
-    case "who_approved":
-      return whoApproved(String(args.eventId));
+      return { rows, graph: expectedControlsGraph(positionId, rows) };
+    }
+    case "who_approved": {
+      const eventId = String(args.eventId);
+      const rows = await whoApproved(eventId);
+      return { rows, graph: whoApprovedGraph(eventId, rows) };
+    }
     case "divergence":
-      return divergence(String(args.positionId));
-    case "read_across":
-      return nearMisses(args.minRules ? Number(args.minRules) : 2);
+      return { rows: await divergence(String(args.positionId)) };
+    case "read_across": {
+      const rows = await nearMisses(args.minRules ? Number(args.minRules) : 2);
+      return { rows, graph: readAcrossGraph(rows) };
+    }
     case "policy_params":
-      return policyParams();
+      return { rows: await policyParams() };
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -124,4 +247,4 @@ Ground rules:
 - Dates: narrate using the event time in \`at\` (the demo clock, consistent with every other screen); when an event has a sourceAt, you may add "(authentic: YYYY-MM-DD)" once per event, never as the primary date.
 - POS-FP is the deliberate false positive: its pattern matches, but its controls actually fired (only R2, R4, R6 show late/missing paperwork). Use it to show that the graph surfaces cases for HUMAN judgment.
 - Tool results include a cypher_audit_trail field. NEVER echo or summarise it — the audit drawer on the right shows every query to the user.
-- Be concise and precise; use tables or numbered chronologies where they help a risk manager read fast.`;
+- Be concise and precise; use GitHub-flavoured markdown tables or numbered chronologies where they help a risk manager read fast (the UI renders markdown properly).`;

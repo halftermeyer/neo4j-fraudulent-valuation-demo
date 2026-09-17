@@ -54,6 +54,9 @@ export interface GNode {
   color?: string; // override (e.g. community colour)
   size?: number;
   grey?: boolean;
+  x?: number; // explicit position (e.g. event-time axis); implies pinned
+  y?: number;
+  pinned?: boolean;
 }
 
 export interface GRel {
@@ -208,11 +211,14 @@ export default function GraphView({
   rels,
   onNodeClick,
   height = 480,
+  autoInspectId = null,
 }: {
   nodes: GNode[];
   rels: GRel[];
   onNodeClick?: (id: string) => void;
   height?: number;
+  /** open the node inspector programmatically (Explore deep links) */
+  autoInspectId?: string | null;
 }) {
   const nvlRef = useRef<NVL | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
@@ -223,13 +229,24 @@ export default function GraphView({
     setInspected(await fetchNodeDetails(id));
   };
 
+  useEffect(() => {
+    if (autoInspectId) void fetchNodeDetails(autoInspectId).then(setInspected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoInspectId]);
+
   const nvlNodes: NvlNode[] = useMemo(
     () =>
       nodes.map((n) => {
-        // seed a scattered position ONLY for nodes NVL has not seen yet —
-        // re-sending x/y for existing nodes would fight the simulation
+        // explicit coordinates (event-time axis) are always applied and pinned;
+        // otherwise seed a scattered position ONLY for nodes NVL has not seen
+        // yet — re-sending x/y for existing nodes would fight the simulation
         const isNew = !seenIds.current.has(n.id);
-        const pos = isNew ? seedPosition(n.id) : {};
+        const pos =
+          n.x !== undefined
+            ? { x: n.x, y: n.y ?? 0, pinned: n.pinned ?? true }
+            : isNew
+              ? seedPosition(n.id)
+              : {};
         return {
           id: n.id,
           captions: [{ value: n.caption ?? n.id }],
