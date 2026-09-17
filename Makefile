@@ -1,6 +1,6 @@
 # Mismarking demo — replayable end-to-end pipeline (see DATA_PLAN.md)
 
-.PHONY: env download data load test app all clean-data
+.PHONY: env download data load test app all clean-data explain
 
 env:              ## derive root .env and app/.env from inputs/.env
 	python3 scripts/make_env.py
@@ -14,6 +14,12 @@ data: env download ## generate the three layers (JSON + load_data.cypher + gap q
 load:             ## load data/load_data.cypher into the mismarking database (CLI path; the app has its own Ingest flow)
 	set -a && . ./.env && set +a && \
 	cat data/load_data.cypher | cypher-shell -a "$$NEO4J_URI" -u "$$NEO4J_USER" -p "$$NEO4J_PASSWORD" -d "$$NEO4J_DATABASE" --format plain
+
+explain:          ## pre-generate AI-companion explanations for the scripted demo path
+	## re-run after editing Policy defaults or after `make data` (the cache key
+	## includes the active ControlObligation parameters; `make data` also wipes
+	## app/public/data where the served copy lives)
+	set -a && . ./.env && set +a && uv run python scripts/pregen_explanations.py
 
 test:             ## run the acceptance tests against the loaded database
 	uv run pytest tests/ -v

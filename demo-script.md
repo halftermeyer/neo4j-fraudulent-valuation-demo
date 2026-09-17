@@ -28,6 +28,20 @@ cd app && npm install && npm run dev    # http://localhost:5173
 customer sent their own thresholds; the panel exists so you can change them live
 when asked.
 
+Run `make explain` after `make data` (and again after changing Policy defaults —
+the cache key includes the active parameters): it pre-generates the AI-companion
+explanations for the whole scripted path, EN and FR, so every Explain click during
+the demo is instant and marked "pre-generated". Off-script clicks fall back to a
+live Gemini call; if that fails the panel shows a one-line error and nothing else
+is affected.
+
+**The grounding answer, once for the whole demo** (someone WILL ask "is this
+hallucinating?"): the companion receives exactly what is on screen — the scene id,
+the rows the scenario query returned, the active ControlObligation parameters and
+the Cypher that produced them — and is instructed to say "not shown here" for
+anything else. Open the Cypher drawer and expand a companion entry's
+`contextSent`: the entire prompt context is auditable, like every query.
+
 Start from an **empty database** (Explore → Reset database): the ingest is part of
 the show.
 
@@ -75,6 +89,11 @@ Add the signals one at a time: PnL signals… price overrides… methodology cha
 IPV reviews… governance gaps. *Talking point:* "Watch the shape form. Every single
 node you just saw is, on its own, below threshold somewhere."
 
+**✦ Explain beat:** click the POS-TP node, then **✦ Explain** in the inspector.
+The companion panel opens with a grounded 3–5 sentence read of the node and its
+neighbourhood — toggle **FR** if the room prefers French. Point at the
+"pre-generated" badge and say the live fallback exists for anything off-script.
+
 ---
 
 ## Act 1 — S1 Conjunction: below threshold alone, a shape together
@@ -92,6 +111,12 @@ POS-TP lights up, the rest of the graph greys out.
 *Talking point:* "This is not an anomaly score on a column. It's a count of
 connected weak signals around one position. The community colouring is the same
 idea topologically: the pattern IS the neighbourhood."
+
+**✦ Explain beat:** click **✦ Explain** on the ranking card. The companion
+restates, from the rows alone, why the top position's mix of signals is
+informative — and what to check next. This is the moment to open the Cypher
+drawer once and show the `contextSent` expander: rows + policy parameters +
+the query, nothing else.
 
 **Objection you will get — "we already have quant tools for outlier marks."**
 Answer: "So did the bank in the public case; its VaR model had just been changed to
@@ -130,6 +155,12 @@ Open the audit drawer on the R5 row: the `sourceRef` cites the Senate report pag
 *Talking point:* "Every claim on this screen is one click from its query and, for the
 case, one click from the public record."
 
+**✦ Explain beat:** click the small **✦ Explain** on the R5 gap row (the review
+that upheld the marks). The companion narrates that single gap — trigger, SLA,
+what was observed instead — in strict chronological order with event ids. If a
+francophone risk manager is in the room, flip **FR** and click again: same
+grounding, same citation discipline.
+
 ---
 
 ## Act 3 — S3 Abstraction: the pattern is a template, not a lookup
@@ -149,6 +180,11 @@ pre-approval, unresolved IPV divergence, recurring unescalated overrides…).
 executable. The pattern matches *attributes*, never instrument fields — that's a
 design rule in the model, not a convention."
 
+**✦ Explain beat:** click **✦ Explain** on the pattern card. The companion
+describes the template from its REQUIRES list only — and, because instrument
+identity is not in its context, it *cannot* name the underlying book. That absence
+is itself the demonstration.
+
 ---
 
 ## Act 4 — S4 Read-across: the whole population, ranked; the false positive, exonerated
@@ -162,6 +198,10 @@ Run the pattern against all ~100 positions. Read the screen:
 - **Exact matches** at 1.0 — the confirmed case matches itself (sanity check, say so).
 - **Partial matches ranked** — "score = satisfied requirements / total. 5/7 today is
   a case file *before* the loss, not after. That is the early-detection story."
+- **✦ Explain beat:** click the small **✦ Explain** on the POS-FP match row
+  *before* jumping to its chronology: the companion reads the score from the
+  satisfied/missing lists — which conditions matched, which did not — and says
+  what to audit next. Then follow its advice by clicking through:
 - **POS-FP near the top.** Click it → the app jumps back to S2 with its chronology:
   methodology change *after* the 2022 rate shock, committee-approved in advance,
   IPV done (late), P&L explained (late), MAP review after the regime break.

@@ -98,9 +98,22 @@ GEMINI_API_KEY=...          # Assistant tab + LLM test
   (`timeline`, `expected_controls`, `who_approved`, `divergence`, `read_across`,
   `policy_params`, `list_positions`), composed by Gemini; every generated Cypher
   lands in the audit drawer.
-- **Cypher audit drawer** (right edge) — every statement the app or the Assistant
-  runs, grouped, with params, timings, results, and the public-record citations
-  (`sourceRef`) of case events.
+- **✦ AI companion** (side panel, top-bar toggle, persistent across tabs) —
+  grounded explanations of what is on screen. Every **Explain** button (scenario
+  cards, S2 gap rows, S4 match rows, the S3 pattern, the selected node) sends
+  ONLY: the scene id, the exact rows the query returned, the active
+  ControlObligation parameters and the Cypher that produced them — no free graph
+  traversal. Fixed 3–5 sentence shape, strict chronology with event-id citations,
+  "not shown here" instead of guessing; EN/FR toggle. `make explain` pre-generates
+  the scripted-path answers into `data/explanations.json` (re-run after changing
+  Policy defaults — the sha256 cache key includes the active parameters); cache
+  misses fall back to a live Gemini call, and failures degrade to a one-line
+  error. Every request (context + response) is logged to the audit drawer with a
+  `contextSent` expander. The panel's "Ask about this" field reuses the typed
+  Assistant tools, scoped to the current selection.
+- **Cypher audit drawer** (right edge) — every statement the app, the Assistant
+  or the AI companion runs, grouped, with params, timings, results, and the
+  public-record citations (`sourceRef`) of case events.
 
 ## Repo layout
 

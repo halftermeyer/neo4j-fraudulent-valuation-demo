@@ -18,8 +18,10 @@ data/cache/
 data/layers/
 data/load_data.cypher
 data/holdout_links.json
+data/explanations.json
 app/public/data/
 
 # misc
 .DS_Store
 *.part
+*.tsbuildinfo

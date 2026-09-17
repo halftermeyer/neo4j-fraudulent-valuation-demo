@@ -12,7 +12,9 @@ import type { NVL, Node as NvlNode, Relationship as NvlRel } from "@neo4j-nvl/ba
 import { d3ForceLayoutType } from "@neo4j-nvl/base";
 import { InteractiveNvlWrapper } from "@neo4j-nvl/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { captureCypher } from "../lib/companion";
 import { runQuery, withGroup } from "../lib/neo4j";
+import { ExplainButton } from "./CompanionPanel";
 
 export const TYPE_COLORS: Record<string, string> = {
   Position: "#0b297d",
@@ -76,6 +78,7 @@ interface NodeDetails {
   labels: string[];
   props: Record<string, unknown>;
   rels: RelSummary[];
+  cypher: string;
 }
 
 // property display order: the story-critical fields first, citations last
@@ -98,7 +101,7 @@ function fmtValue(k: string, v: unknown): string {
 }
 
 async function fetchNodeDetails(id: string): Promise<NodeDetails | null> {
-  return withGroup(`Inspect node ${id}`, async () => {
+  const { result, cypher } = await captureCypher(() => withGroup(`Inspect node ${id}`, async () => {
     const rows = await runQuery<{
       labels: string[];
       props: Record<string, unknown>;
@@ -117,14 +120,16 @@ async function fetchNodeDetails(id: string): Promise<NodeDetails | null> {
       { id },
     );
     const r = rows[0];
-    if (!r) return null;
-    return {
-      id,
-      labels: r.labels,
-      props: r.props,
-      rels: (r.rels.filter(Boolean) as RelSummary[]).sort((a, b) => b.count - a.count),
-    };
-  });
+    return r ?? null;
+  }));
+  if (!result) return null;
+  return {
+    id,
+    labels: result.labels,
+    props: result.props,
+    rels: (result.rels.filter(Boolean) as RelSummary[]).sort((a, b) => b.count - a.count),
+    cypher,
+  };
 }
 
 function NodeInspector({ details, onClose }: { details: NodeDetails; onClose: () => void }) {
@@ -145,6 +150,16 @@ function NodeInspector({ details, onClose }: { details: NodeDetails; onClose: ()
           {label}
         </span>
         <code>{details.id}</code>
+        <ExplainButton
+          payload={() => ({
+            scene: "explore",
+            selectionId: details.id,
+            title: `${label} ${details.id}`,
+            rows: { properties: details.props, neighbourhood: details.rels },
+            cypher: details.cypher,
+          })}
+          small
+        />
         <button className="node-inspector-close" onClick={onClose}>✕</button>
       </div>
       <table className="node-inspector-props">

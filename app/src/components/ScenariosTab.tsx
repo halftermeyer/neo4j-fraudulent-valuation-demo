@@ -33,6 +33,8 @@ import {
   type ReadAcrossRow,
   type RequireCandidate,
 } from "../lib/scenarioQueries";
+import { captureCypher } from "../lib/companion";
+import { ExplainButton } from "./CompanionPanel";
 import GraphView, { GREY, TYPE_COLORS, type GNode, type GRel } from "./GraphView";
 import PolicyPanel from "./PolicyPanel";
 import "./scenarios.css";
@@ -76,6 +78,7 @@ function neighborhoodToGraph(
 
 function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   const [rows, setRows] = useState<ConjunctionRow[]>([]);
+  const [runCypher, setRunCypher] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [nb, setNb] = useState<Neighborhood | null>(null);
   const [community, setCommunity] = useState<number | null>(null);
@@ -85,7 +88,8 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   const run = async () => {
     setBusy(true);
     try {
-      const r = await runConjunction();
+      const { result: r, cypher } = await captureCypher(() => runConjunction());
+      setRunCypher(cypher);
       setRows(r);
       const first = r[0]?.positionId ?? null;
       setSelected(first);
@@ -143,7 +147,18 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
       {rows.length > 0 && (
         <div className="s1-layout">
           <div className="panel s1-table">
-            <h2>Positions ranked by conjunction</h2>
+            <div className="card-head">
+              <h2>Positions ranked by conjunction</h2>
+              <ExplainButton
+                payload={() => ({
+                  scene: "s1",
+                  selectionId: selected ?? rows[0]?.positionId ?? "?",
+                  title: `Conjunction ranking — ${selected ?? rows[0]?.positionId ?? ""}`,
+                  rows: rows.slice(0, 12),
+                  cypher: runCypher,
+                })}
+              />
+            </div>
             <p className="hint">Click a row to draw its neighbourhood. Double meaning intended: score = (events) × (distinct broken rules).</p>
             <table className="data-table">
               <thead>
@@ -235,17 +250,33 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
   const [chain, setChain] = useState<ChainRow[]>([]);
   const [asOf, setAsOf] = useState("2023-01-01");
   const [busy, setBusy] = useState(false);
+  const [runCypher, setRunCypher] = useState("");
 
   const run = useCallback(async () => {
     setBusy(true);
     try {
-      setEvents(await timeline(positionId));
-      setChain(await chronologyChain(positionId));
-      setControls(await expectedControls(positionId, { asOf: `${asOf}T00:00:00Z` }));
+      const { result, cypher } = await captureCypher(async () => ({
+        ev: await timeline(positionId),
+        ch: await chronologyChain(positionId),
+        ctl: await expectedControls(positionId, { asOf: `${asOf}T00:00:00Z` }),
+      }));
+      setEvents(result.ev);
+      setChain(result.ch);
+      setControls(result.ctl);
+      setRunCypher(cypher);
     } finally {
       setBusy(false);
     }
   }, [positionId, asOf]);
+
+  const slimEvents = () =>
+    events.map((e) => ({
+      id: e.id,
+      label: e.label,
+      at: e.at,
+      sourceAt: e.sourceAt,
+      description: e.description ? String(e.description).slice(0, 140) : undefined,
+    }));
 
   return (
     <>
@@ -302,7 +333,18 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
           </div>
           <div className="s2-right">
             <div className="panel">
-              <h2>Expected vs observed (as of {asOf})</h2>
+              <div className="card-head">
+                <h2>Expected vs observed (as of {asOf})</h2>
+                <ExplainButton
+                  payload={() => ({
+                    scene: "s2",
+                    selectionId: positionId,
+                    title: `Chronology & expected-vs-observed — ${positionId}`,
+                    rows: { timeline: slimEvents(), expectedControls: controls },
+                    cypher: runCypher,
+                  })}
+                />
+              </div>
               <p className="hint">
                 One parameterised gap query for all nine rules — thresholds read live from the
                 ControlObligation nodes (see Policy panel).
@@ -332,6 +374,18 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
                       <td>{c.observedEventId ? fmtDate(c.observedAt) : "—"}</td>
                       <td>
                         <span className={`pill pill-${c.status.toLowerCase()}`}>{c.status}</span>
+                        {c.status !== "MET" && (
+                          <ExplainButton
+                            payload={() => ({
+                              scene: "s2-gap",
+                              selectionId: `${positionId}:${c.ruleId}`,
+                              title: `Gap ${c.ruleId} (${c.ruleName}) — ${positionId}`,
+                              rows: [c],
+                              cypher: runCypher,
+                            })}
+                            small
+                          />
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -379,11 +433,14 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
 function S3() {
   const [pattern, setPattern] = useState<PatternInfo | null>(null);
   const [busy, setBusy] = useState(false);
+  const [runCypher, setRunCypher] = useState("");
 
   const run = async () => {
     setBusy(true);
     try {
-      setPattern(await createPatternFromIncident("INC-TP"));
+      const { result, cypher } = await captureCypher(() => createPatternFromIncident("INC-TP"));
+      setPattern(result);
+      setRunCypher(cypher);
     } finally {
       setBusy(false);
     }
@@ -426,7 +483,18 @@ function S3() {
       {pattern && graph && (
         <div className="s1-layout">
           <div className="panel">
-            <h2>{pattern.name}</h2>
+            <div className="card-head">
+              <h2>{pattern.name}</h2>
+              <ExplainButton
+                payload={() => ({
+                  scene: "s3",
+                  selectionId: pattern.id,
+                  title: `Pattern ${pattern.id} — abstracted from ${pattern.fromIncident}`,
+                  rows: pattern,
+                  cypher: runCypher,
+                })}
+              />
+            </div>
             <p className="hint">
               Built from incident <code>{pattern.fromIncident}</code>. REQUIRES ={" "}
               {pattern.requires.length} conditions — every one instrument-agnostic:
@@ -458,6 +526,7 @@ function S3() {
 
 function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   const [rows, setRows] = useState<ReadAcrossRow[]>([]);
+  const [runCypher, setRunCypher] = useState("");
   const [pattern, setPattern] = useState<PatternInfo | null>(null);
   const [candidates, setCandidates] = useState<RequireCandidate[]>([]);
   const [addSel, setAddSel] = useState("");
@@ -474,12 +543,16 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   const run = async () => {
     setBusy(true);
     try {
-      const p = await refreshPattern();
-      if (p.requires.length === 0) {
-        await createPatternFromIncident("INC-TP");
-        await refreshPattern();
-      }
-      setRows(await scoreReadAcross());
+      const { result, cypher } = await captureCypher(async () => {
+        const p = await refreshPattern();
+        if (p.requires.length === 0) {
+          await createPatternFromIncident("INC-TP");
+          await refreshPattern();
+        }
+        return scoreReadAcross();
+      });
+      setRows(result);
+      setRunCypher(cypher);
       setCandidates(await listRequireCandidates());
     } finally {
       setBusy(false);
@@ -577,7 +650,18 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
 
       {rows.length > 0 && (
         <div className="panel">
-          <h2>Every position vs the pattern</h2>
+          <div className="card-head">
+            <h2>Every position vs the pattern</h2>
+            <ExplainButton
+              payload={() => ({
+                scene: "s4",
+                selectionId: pattern?.id ?? "PATTERN-TP",
+                title: "Read-across — every position vs the pattern",
+                rows: { matches: rows.slice(0, 15), patternRequires: pattern?.requires ?? [] },
+                cypher: runCypher,
+              })}
+            />
+          </div>
           <table className="data-table">
             <thead>
               <tr>
@@ -619,7 +703,19 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
                       </span>
                     ))}
                   </td>
-                  <td className="hint-inline">chronology →</td>
+                  <td>
+                    <ExplainButton
+                      payload={() => ({
+                        scene: "s4",
+                        selectionId: r.positionId,
+                        title: `Read-across match — ${r.positionId} (${(r.score * 100).toFixed(0)}%)`,
+                        rows: { match: r, patternRequires: pattern?.requires ?? [] },
+                        cypher: runCypher,
+                      })}
+                      small
+                    />
+                    <span className="hint-inline"> chronology →</span>
+                  </td>
                 </tr>
               ))}
             </tbody>
