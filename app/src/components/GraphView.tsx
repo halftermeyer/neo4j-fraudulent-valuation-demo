@@ -13,6 +13,7 @@ import { d3ForceLayoutType } from "@neo4j-nvl/base";
 import { InteractiveNvlWrapper } from "@neo4j-nvl/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { captureCypher } from "../lib/companion";
+import { openInExplore } from "../lib/exploreLink";
 import { runQuery, withGroup } from "../lib/neo4j";
 import { ExplainButton } from "./CompanionPanel";
 
@@ -135,7 +136,15 @@ async function fetchNodeDetails(id: string): Promise<NodeDetails | null> {
   };
 }
 
-function NodeInspector({ details, onClose }: { details: NodeDetails; onClose: () => void }) {
+function NodeInspector({
+  details,
+  onClose,
+  showExploreLink,
+}: {
+  details: NodeDetails;
+  onClose: () => void;
+  showExploreLink: boolean;
+}) {
   const keys = Object.keys(details.props).filter(
     (k) => !PROP_HIDE.has(k) && details.props[k] !== null && details.props[k] !== "",
   );
@@ -191,6 +200,17 @@ function NodeInspector({ details, onClose }: { details: NodeDetails; onClose: ()
       {citation != null && (
         <div className="node-inspector-citation">Source: {String(citation)}</div>
       )}
+      {showExploreLink && (
+        <button
+          className="node-inspector-explore"
+          onClick={() => {
+            onClose();
+            openInExplore(details.id);
+          }}
+        >
+          Open in Explore →
+        </button>
+      )}
     </div>
   );
 }
@@ -212,6 +232,7 @@ export default function GraphView({
   onNodeClick,
   height = 480,
   autoInspectId = null,
+  showExploreLink = true,
 }: {
   nodes: GNode[];
   rels: GRel[];
@@ -219,6 +240,8 @@ export default function GraphView({
   height?: number;
   /** open the node inspector programmatically (Explore deep links) */
   autoInspectId?: string | null;
+  /** "Open in Explore →" in the inspector — pass false when already in Explore */
+  showExploreLink?: boolean;
 }) {
   const nvlRef = useRef<NVL | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
@@ -299,7 +322,13 @@ export default function GraphView({
         ref={nvlRef}
         rels={nvlRels}
       />
-      {inspected && <NodeInspector details={inspected} onClose={() => setInspected(null)} />}
+      {inspected && (
+        <NodeInspector
+          details={inspected}
+          onClose={() => setInspected(null)}
+          showExploreLink={showExploreLink}
+        />
+      )}
       <div className="graph-canvas-hint">click a node to inspect it</div>
     </div>
   );

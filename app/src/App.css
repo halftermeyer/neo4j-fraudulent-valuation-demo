@@ -449,6 +449,21 @@ table.data-table tr.clickable:hover {
   font-size: 0.74rem;
 }
 
+.node-inspector-explore {
+  margin-top: 8px;
+  width: 100%;
+  background: #eef2f9;
+  border: 1px solid #c6d4e8;
+  color: #17457e;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.node-inspector-explore:hover { background: #e0e9f7; }
+
 .graph-canvas-hint {
   position: absolute;
   left: 10px;

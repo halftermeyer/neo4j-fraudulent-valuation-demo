@@ -434,7 +434,13 @@ export default function ExploreTab() {
           {step >= 3 && chart.length > 1 && <PriceChart rows={chart} />}
 
           {graphNodes.length > 0 && (
-            <GraphView autoInspectId={inspectId} height={460} nodes={graphNodes} rels={graphRels} />
+            <GraphView
+              autoInspectId={inspectId}
+              height={460}
+              nodes={graphNodes}
+              rels={graphRels}
+              showExploreLink={false}
+            />
           )}
         </div>
       )}

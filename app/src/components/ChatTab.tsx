@@ -19,7 +19,6 @@ import {
   TOOL_DECLARATIONS,
   type GraphPayload,
 } from "../lib/assistantTools";
-import { openInExplore } from "../lib/exploreLink";
 import { getQueryLog } from "../lib/neo4j";
 import GraphView, { type GNode, type GRel } from "./GraphView";
 import ResultGrid from "./ResultGrid";
@@ -122,16 +121,13 @@ function AnswerViz({ viz }: { viz: ToolViz[] }) {
           table
         </button>
         <span className="hint-inline">
-          {viz.map((v) => v.toolName).join(" · ")} — click a node or an id to open it in Explore
+          {viz.map((v) => v.toolName).join(" · ")} — click a node to inspect it; table ids open
+          Explore
         </span>
       </div>
       {effective === "graph" ? (
-        <GraphView
-          height={320}
-          nodes={graph.nodes}
-          onNodeClick={(id) => openInExplore(id)}
-          rels={graph.rels}
-        />
+        // click = inspect in place; the inspector's "Open in Explore →" jumps tabs
+        <GraphView height={320} nodes={graph.nodes} rels={graph.rels} />
       ) : (
         viz
           .filter((v) => v.rows.length > 0)
