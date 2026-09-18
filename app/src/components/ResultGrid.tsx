@@ -15,9 +15,11 @@ import { openInExplore } from "../lib/exploreLink";
 
 type Row = Record<string, unknown>;
 
-// ids minted by generate_data.py / the case encoder — clicking selects in Explore
+// Explore starts from a Position, so only position-context ids link there:
+// positions themselves and the event/gap ids that carry a positionId. Rules,
+// desks, people, attributes, patterns etc. have no Explore anchoring.
 const NODE_ID_RE =
-  /^(POS|PO|MC|MCH|IPV|MAP|PNL|CTL|APR|ESC|EV|RC|CA|INC|GAP|RA|VM|PER|DESK|COM|OVR|REGIME|PATTERN|INSTR|MP|MPX|R[1-9])(-[A-Za-z0-9:._-]+)?$/;
+  /^(POS|PO|MC|MCH|IPV|MAP|PNL|CTL|APR|ESC|EV|RC|CA|INC|GAP|OVR)-[A-Za-z0-9:._-]+$/;
 
 function isNodeId(v: unknown): v is string {
   return typeof v === "string" && v.length >= 2 && NODE_ID_RE.test(v) && v !== v.toLowerCase();

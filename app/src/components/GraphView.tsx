@@ -155,6 +155,11 @@ function NodeInspector({
   });
   const citation = details.props["sourceRef"];
   const label = details.labels[0] ?? "Node";
+  // Explore starts from a Position — the deep link only makes sense for nodes
+  // that resolve to one (a Position itself, or an event/gap carrying positionId)
+  const canExplore =
+    showExploreLink &&
+    (details.labels.includes("Position") || details.props["positionId"] != null);
   return (
     <div className="node-inspector">
       <div className="node-inspector-head">
@@ -200,7 +205,7 @@ function NodeInspector({
       {citation != null && (
         <div className="node-inspector-citation">Source: {String(citation)}</div>
       )}
-      {showExploreLink && (
+      {canExplore && (
         <button
           className="node-inspector-explore"
           onClick={() => {
