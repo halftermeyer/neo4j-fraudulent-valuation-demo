@@ -118,6 +118,12 @@ GEMINI_API_KEY=...          # Assistant tab + LLM test
   error. Every request (context + response) is logged to the audit drawer with a
   `contextSent` expander. The panel's "Ask about this" field reuses the typed
   Assistant tools, scoped to the current selection.
+- **Glossary** (top-bar toggle, OFF by default, session-only) — an onboarding
+  aid: curated terms from `app/src/content/glossary.json` get a dotted underline
+  in business-problem blocks, scenario cards and companion answers (whole-word,
+  first occurrence per paragraph, never in code/ids/the drawer); hover for a
+  one-line definition, click to ask the companion how the concept appears in
+  this graph. Kept OFF during the executive demo.
 - **Cypher audit drawer** (right edge) — every statement the app, the Assistant
   or the AI companion runs, grouped, with params, timings, results, and the
   public-record citations (`sourceRef`) of case events.

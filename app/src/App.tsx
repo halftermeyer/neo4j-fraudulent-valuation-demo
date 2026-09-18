@@ -8,6 +8,7 @@ import QueryAuditDrawer from "./components/QueryAuditDrawer";
 import ScenariosTab from "./components/ScenariosTab";
 import { getCompanionState, onCompanionChange, toggleCompanion } from "./lib/companion";
 import { onExploreLink } from "./lib/exploreLink";
+import { isGlossaryOn, onGlossaryChange, toggleGlossary } from "./lib/glossary";
 
 type TabId = "explore" | "scenarios" | "assistant";
 
@@ -23,6 +24,9 @@ export default function App() {
   // "open this node in Explore" deep links (Assistant answers, DataGrid ids)
   useEffect(() => onExploreLink(() => setTab("explore")), []);
 
+  const [glossaryOn, setGlossaryOn] = useState(isGlossaryOn());
+  useEffect(() => onGlossaryChange(() => setGlossaryOn(isGlossaryOn())), []);
+
   return (
     <div className={`app-container ${companionOpen ? "companion-open" : ""}`}>
       <header className="app-header">
@@ -34,6 +38,13 @@ export default function App() {
           </p>
         </div>
         <div className="header-right">
+          <button
+            className={`header-companion-toggle ${glossaryOn ? "active" : ""}`}
+            onClick={() => toggleGlossary()}
+            title="Onboarding aid — off by default, session only"
+          >
+            Glossary
+          </button>
           <button
             className={`header-companion-toggle ${companionOpen ? "active" : ""}`}
             onClick={() => toggleCompanion()}

@@ -22,6 +22,7 @@ import {
 import { getQueryLog } from "../lib/neo4j";
 import GraphView, { type GNode, type GRel } from "./GraphView";
 import ResultGrid from "./ResultGrid";
+import GlossaryText from "./Term";
 import "./chat.css";
 
 const MODEL = "gemini-2.5-flash";
@@ -266,11 +267,13 @@ export default function ChatTab() {
   return (
     <div className="chat-container">
       <div className="business-problem">
-        <div className="bp-title">Why this tab exists</div>
-        A natural-language, <strong>chronological</strong> investigation is a validation
-        criterion for this demo. The assistant composes <strong>typed tools</strong> over the
-        same audited query functions the UI uses — it is not free-form text-to-Cypher. Open the
-        Cypher drawer while it answers.
+        <GlossaryText>
+          <div className="bp-title">Why this tab exists</div>
+          A natural-language, <strong>chronological</strong> investigation is a validation
+          criterion for this demo. The assistant composes <strong>typed tools</strong> over the
+          same audited query functions the UI uses — it is not free-form text-to-Cypher. Open
+          the Cypher drawer while it answers.
+        </GlossaryText>
       </div>
 
       <div className="chat-messages">

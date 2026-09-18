@@ -13,6 +13,7 @@ import {
   type ExplainPayload,
   type Lang,
 } from "../lib/companion";
+import GlossaryText from "./Term";
 
 /** The "Explain" button placed on scenario cards, rows and the node inspector. */
 export function ExplainButton({
@@ -96,7 +97,11 @@ export default function CompanionPanel() {
               {!e.pregenerated && e.text && <span className="pill pill-pending">live</span>}
             </div>
             {e.question && <div className="companion-question">“{e.question}”</div>}
-            {e.text && <div className="companion-text">{e.text}</div>}
+            {e.text && (
+              <div className="companion-text">
+                <GlossaryText>{e.text}</GlossaryText>
+              </div>
+            )}
             {e.error && <div className="companion-error">⚠ {e.error}</div>}
           </div>
         ))}

@@ -16,6 +16,7 @@ import {
 } from "../lib/queries";
 import { consumePendingNode, onExploreLink } from "../lib/exploreLink";
 import GraphView, { type GNode, type GRel } from "./GraphView";
+import GlossaryText from "./Term";
 import "./explore.css";
 
 interface DivRow {
@@ -319,11 +320,13 @@ export default function ExploreTab() {
   return (
     <div className="explore-tab">
       <div className="business-problem">
-        <div className="bp-title">The business problem</div>
-        Reconstructing how one illiquid position was valued — marks, IPV results, P&L
-        attribution, approvals, committee minutes — takes <strong>days of manual work across
-        five systems</strong>, and it only happens after a loss. Here the same reconstruction
-        is <strong>one graph, revealed one hop at a time</strong>.
+        <GlossaryText>
+          <div className="bp-title">The business problem</div>
+          Reconstructing how one illiquid position was valued — marks, IPV results, P&L
+          attribution, approvals, committee minutes — takes <strong>days of manual work across
+          five systems</strong>, and it only happens after a loss. Here the same reconstruction
+          is <strong>one graph, revealed one hop at a time</strong>.
+        </GlossaryText>
       </div>
 
       {/* ── A. Ingest / database ── */}

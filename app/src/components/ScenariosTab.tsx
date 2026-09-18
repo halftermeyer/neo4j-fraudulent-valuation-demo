@@ -37,6 +37,7 @@ import { captureCypher } from "../lib/companion";
 import { ExplainButton } from "./CompanionPanel";
 import GraphView, { GREY, TYPE_COLORS, type GNode, type GRel } from "./GraphView";
 import PolicyPanel from "./PolicyPanel";
+import GlossaryText from "./Term";
 import "./scenarios.css";
 
 type SubTab = "s1" | "s2" | "s3" | "s4" | "policy";
@@ -128,12 +129,14 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   return (
     <>
       <div className="business-problem">
-        <div className="bp-title">The problem today</div>
-        Each control sees one signal at a time: a P&L break in one report, an override in
-        another, a late IPV in a third — <strong>each below its own threshold, none alerting.</strong>{" "}
-        Assembling them per position is a manual, quarterly, spreadsheet exercise.{" "}
-        <strong>How to read the screen:</strong> one query walks all connections around every
-        position and counts what co-occurs. The ranking is the conjunction — not any single alarm.
+        <GlossaryText>
+          <div className="bp-title">The problem today</div>
+          Each control sees one signal at a time: a P&L break in one report, an override in
+          another, a late IPV in a third — <strong>each below its own threshold, none alerting.</strong>{" "}
+          Assembling them per position is a manual, quarterly, spreadsheet exercise.{" "}
+          <strong>How to read the screen:</strong> one query walks all connections around every
+          position and counts what co-occurs. The ranking is the conjunction — not any single alarm.
+        </GlossaryText>
       </div>
       <div className="btn-row">
         <button className="demo-btn" disabled={busy} onClick={run}>
@@ -159,7 +162,12 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
                 })}
               />
             </div>
-            <p className="hint">Click a row to draw its neighbourhood. Double meaning intended: score = (events) × (distinct broken rules).</p>
+            <p className="hint">
+              <GlossaryText>
+                Click a row to draw its neighbourhood. Double meaning intended: score = (events)
+                × (distinct broken rules).
+              </GlossaryText>
+            </p>
             <table className="data-table">
               <thead>
                 <tr>
@@ -281,13 +289,15 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
   return (
     <>
       <div className="business-problem">
-        <div className="bp-title">The problem today</div>
-        Reconstructing one book's story means stitching e-mails, IPV packs, committee minutes and
-        P&L reports — weeks of work after the fact. <strong>How to read the screen:</strong> events
-        are chained in event-time in the graph; the timeline below is one traversal, and the
-        expected-vs-observed table is one parameterised query over the nine control obligations:{" "}
-        <em>which control should have fired here, and did not.</em> The Assistant tab answers the
-        same question in natural language over the same queries.
+        <GlossaryText>
+          <div className="bp-title">The problem today</div>
+          Reconstructing one book's story means stitching e-mails, IPV packs, committee minutes and
+          P&L reports — weeks of work after the fact. <strong>How to read the screen:</strong> events
+          are chained in event-time in the graph; the timeline below is one traversal, and the
+          expected-vs-observed table is one parameterised query over the nine control obligations:{" "}
+          <em>which control should have fired here, and did not.</em> The Assistant tab answers the
+          same question in natural language over the same queries.
+        </GlossaryText>
       </div>
       <div className="btn-row">
         <label className="inline-label">
@@ -346,8 +356,10 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
                 />
               </div>
               <p className="hint">
-                One parameterised gap query for all nine rules — thresholds read live from the
-                ControlObligation nodes (see Policy panel).
+                <GlossaryText>
+                  One parameterised gap query for all nine rules — thresholds read live from the
+                  ControlObligation nodes (see Policy panel).
+                </GlossaryText>
               </p>
               <table className="data-table">
                 <thead>
@@ -468,12 +480,14 @@ function S3() {
   return (
     <>
       <div className="business-problem">
-        <div className="bp-title">The problem today</div>
-        After a loss event, the lesson stays trapped in the instrument it happened to: read-across
-        reviews are run by hand, per asset class, months later.{" "}
-        <strong>How to read the screen:</strong> from the confirmed incident, one query builds a{" "}
-        <strong>template</strong> — the risk attributes and the governance gaps that carried the
-        case. No instrument name, no desk, no dates. It is a shape, not a lookup.
+        <GlossaryText>
+          <div className="bp-title">The problem today</div>
+          After a loss event, the lesson stays trapped in the instrument it happened to: read-across
+          reviews are run by hand, per asset class, months later.{" "}
+          <strong>How to read the screen:</strong> from the confirmed incident, one query builds a{" "}
+          <strong>template</strong> — the risk attributes and the governance gaps that carried the
+          case. No instrument name, no desk, no dates. It is a shape, not a lookup.
+        </GlossaryText>
       </div>
       <div className="btn-row">
         <button className="demo-btn" disabled={busy} onClick={run}>
@@ -507,9 +521,11 @@ function S3() {
               ))}
             </div>
             <p className="hint">
-              The template deliberately excludes <code>deskId</code> and <code>issuerSector</code>:
-              the pattern must travel across desks and sectors. Add them back in S4 to see the
-              match set shrink — pattern size is a presenter's choice, not a system limit.
+              <GlossaryText>
+                The template deliberately excludes <code>deskId</code> and <code>issuerSector</code>:
+                the pattern must travel across desks and sectors. Add them back in S4 to see the
+                match set shrink — pattern size is a presenter's choice, not a system limit.
+              </GlossaryText>
             </p>
           </div>
           <div className="panel s1-graph">
@@ -593,12 +609,14 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   return (
     <>
       <div className="business-problem">
-        <div className="bp-title">The problem today</div>
-        “Could this happen elsewhere?” takes a task force a quarter, instrument by instrument.{" "}
-        <strong>How to read the screen:</strong> the template from S3 is matched against{" "}
-        <strong>every position at once</strong>. Score = satisfied conditions / total. 1.00 is the
-        confirmed case; everything between 0.5 and 1.0 is the early-detection story — the pattern
-        forming before the loss. Click a row to audit that position's chronology in S2.
+        <GlossaryText>
+          <div className="bp-title">The problem today</div>
+          “Could this happen elsewhere?” takes a task force a quarter, instrument by instrument.{" "}
+          <strong>How to read the screen:</strong> the template from S3 is matched against{" "}
+          <strong>every position at once</strong>. Score = satisfied conditions / total. 1.00 is the
+          confirmed case; everything between 0.5 and 1.0 is the early-detection story — the pattern
+          forming before the loss. Click a row to audit that position's chronology in S2.
+        </GlossaryText>
       </div>
       <div className="btn-row">
         <button className="demo-btn" disabled={busy} onClick={run}>
@@ -721,9 +739,11 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
             </tbody>
           </table>
           <p className="hint">
-            <strong>POS-FP</strong> is the deliberate false positive: the shape matches, but open
-            its chronology — its controls did happen (approved, IPV-challenged, MAP-reviewed).
-            The graph surfaces the conjunction; a human establishes intent.
+            <GlossaryText>
+              <strong>POS-FP</strong> is the deliberate false positive: the shape matches, but open
+              its chronology — its controls did happen (approved, IPV-challenged, MAP-reviewed).
+              The graph surfaces the conjunction; a human establishes intent.
+            </GlossaryText>
           </p>
         </div>
       )}

@@ -1,0 +1,116 @@
+[
+  {
+    "term": "mismarking",
+    "aliases": ["fraudulent valuation", "mismarked", "mismark"],
+    "short": "Deliberately valuing a position away from fair value while reporting it as correct.",
+    "graphHint": "The confirmed case: (:Incident)-[:CAUSED_BY]->(:Position POS-TP); its full trail is the S2 chronology."
+  },
+  {
+    "term": "illiquid instrument",
+    "aliases": ["illiquid", "illiquids", "illiquid bond", "illiquid book", "illiquid position"],
+    "short": "An instrument that trades rarely, so its price is estimated rather than observed.",
+    "graphHint": "(:RiskAttribute {type:'liquidityTier', value:'illiquid'}) linked via HAS_RISK_ATTRIBUTE from Instrument and Position; scope of rule R7."
+  },
+  {
+    "term": "valuation methodology",
+    "aliases": ["methodology", "methodologies", "marking practice"],
+    "short": "The documented method by which a position is valued.",
+    "graphHint": "(:ValuationMethodology) linked by VALUED_BY from Position; changes are (:MethodologyChange) events via CHANGED_TO — triggers of R1/R2."
+  },
+  {
+    "term": "proxy curve",
+    "aliases": ["proxy-curve", "proxy model", "proxy price"],
+    "short": "A reference curve used to value instruments lacking observable prices.",
+    "graphHint": "(:MarketPrice {source:'proxy-model'}) COMPARED_WITH observed prices, divergenceBps on the relationship; the Explore price chart."
+  },
+  {
+    "term": "IPV",
+    "aliases": ["Independent Price Verification", "IPV review", "IPV reviews"],
+    "short": "Independent Price Verification: periodic check of trader marks against independent sources.",
+    "graphHint": "(:IPVReview) events via REVIEWED_BY; divergenceBps drives rules R2, R3 (challenge) and R5 in S2's expected-vs-observed."
+  },
+  {
+    "term": "MAP review",
+    "aliases": ["MAP", "MAPReview", "MAP reviews"],
+    "short": "Periodic market-conformity review of illiquid books (acronym to be confirmed with the customer).",
+    "graphHint": "(:MAPReview) events via REVIEWED_BY; required by R4 (after escalation) and R7 (periodic / post regime break)."
+  },
+  {
+    "term": "LOD 1",
+    "aliases": ["LOD1", "first line of defence", "first line of defense"],
+    "short": "First line of defence: controls owned and executed by the business itself.",
+    "graphHint": "Desk-side events: (:Approval) by desk actors, (:Control) via SUBJECT_TO_CONTROL; R8 tests their independence from the position's desk."
+  },
+  {
+    "term": "P&L attribution",
+    "aliases": ["PnL attribution", "P&L explain", "attribution"],
+    "short": "Decomposition of daily P&L into its explained drivers.",
+    "graphHint": "(:Control {kind:'attribution'}) events; required by R6 within slaDays of a persistent PnLSignal."
+  },
+  {
+    "term": "unexplained P&L",
+    "aliases": ["unexplained PnL", "P&L break"],
+    "short": "The residual of daily P&L that attribution cannot account for.",
+    "graphHint": "(:PnLSignal {unexplainedPct, consecutiveDays}) via GENERATED_SIGNAL; the trigger of rule R6."
+  },
+  {
+    "term": "price override",
+    "aliases": ["price overrides", "override", "overrides"],
+    "short": "A manual replacement of a system or quoted price by a trader mark.",
+    "graphHint": "(:PriceOverride {deviationBps, side}) via OVERRIDDEN_BY; triggers of R3 and R4 — the weekly series on POS-TP."
+  },
+  {
+    "term": "weak signal",
+    "aliases": ["weak signals"],
+    "short": "An observation that stays below alerting threshold on its own.",
+    "graphHint": "Every event node in S1; each is sub-threshold, the S1 ranking counts their co-occurrence around a Position."
+  },
+  {
+    "term": "conjunction",
+    "aliases": ["conjunction of weak signals"],
+    "short": "Several weak signals occurring together around the same object.",
+    "graphHint": "S1's score: (signals + overrides + methodology changes) × distinct broken rules per Position; the community IS the pattern."
+  },
+  {
+    "term": "read-across",
+    "aliases": ["read across"],
+    "short": "Re-applying the lessons of one confirmed case to the whole population.",
+    "graphHint": "S3/S4: (:Pattern)-[:REQUIRES]->(:RiskAttribute|:GovernanceGap) matched against every Position; score = satisfied / total."
+  },
+  {
+    "term": "backtesting",
+    "aliases": ["back-testing", "backtest", "held-out ground truth"],
+    "short": "Validating a method against known outcomes withheld from it.",
+    "graphHint": "S4 link prediction: six HAS_RISK_ATTRIBUTE links removed at generation (holdout_links.json); recovery is shown on screen."
+  },
+  {
+    "term": "community",
+    "aliases": ["communities", "community detection"],
+    "short": "A densely connected group of nodes found by a graph algorithm.",
+    "graphHint": "GDS Louvain writes communityId on nodes; S1 colours the selected position's community and greys the rest."
+  },
+  {
+    "term": "link prediction",
+    "aliases": ["predicted links", "predicted link"],
+    "short": "Inferring relationships that are likely but not yet present in the graph.",
+    "graphHint": "S4: gds.nodeSimilarity over the Position–RiskAttribute bipartite projection; candidates for typed holes, validated against the holdout."
+  },
+  {
+    "term": "partial match",
+    "aliases": ["partial matches"],
+    "short": "A case matching some but not all conditions of a pattern.",
+    "graphHint": "S4 score strictly between 0 and 1; the 0.5–1.0 band is the early-detection story — the pattern forming before the loss."
+  },
+  {
+    "term": "false positive",
+    "aliases": ["true positive", "false positives", "true positives", "assessed FP"],
+    "short": "A pattern match that human review dismisses (false) or confirms (true).",
+    "graphHint": "POS-TP is the confirmed case; POS-FP the deliberate false positive whose controls did fire (only R2/R4/R6 paperwork gaps)."
+  },
+  {
+    "term": "regime break",
+    "aliases": ["regime shift", "rate shock", "regime-break"],
+    "short": "An abrupt change in market conditions that invalidates previous calibrations.",
+    "graphHint": "(:RegimeBreak {at: 2022-09-30}); rule R7 requires a MAPReview within regimeSlaDays after it."
+  }
+]

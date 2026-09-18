@@ -171,6 +171,26 @@ table.data-table tr.clickable:hover {
 }
 
 .business-problem strong { color: #fff; }
+
+/* glossary terms: dotted underline in the CURRENT text colour, nothing else */
+button.glossary-term {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  font-weight: inherit;
+  cursor: help;
+  text-decoration: underline dotted currentColor;
+  text-underline-offset: 3px;
+}
+
+button.glossary-term:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 .business-problem .bp-title {
   text-transform: uppercase;
   letter-spacing: 0.08em;

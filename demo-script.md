@@ -38,6 +38,10 @@ the demo is instant and marked "pre-generated". Off-script clicks fall back to a
 live Gemini call; if that fails the panel shows a one-line error and nothing else
 is affected.
 
+The **Glossary** toggle (top bar) is a preparation and onboarding aid — dotted
+terms with one-line definitions and a "show me in the graph" click-through. Keep it
+**OFF during the executive demo**: the audience knows the vocabulary.
+
 **The grounding answer, once for the whole demo** (someone WILL ask "is this
 hallucinating?"): the companion receives exactly what is on screen — the scene id,
 the rows the scenario query returned, the active ControlObligation parameters and

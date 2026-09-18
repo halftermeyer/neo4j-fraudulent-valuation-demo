@@ -260,10 +260,27 @@ export async function requestExplain(payload: ExplainPayload): Promise<void> {
   notify();
 }
 
+/** Glossary click — "show me how <term> appears in this graph", grounded on the
+ *  current selection when one exists, on the graphHint alone otherwise. */
+export async function askGlossary(term: string, graphHint: string): Promise<void> {
+  state.open = true;
+  notify();
+  await askAboutThis(
+    `Show me how "${term}" appears in this graph for the current selection.`,
+    `Glossary hint (how the concept appears in this graph): ${graphHint}`,
+  );
+}
+
 /** "Ask about this" — typed tools only, scoped to the current selection. */
-export async function askAboutThis(question: string): Promise<void> {
-  const payload = state.lastPayload;
-  if (!payload || !question.trim()) return;
+export async function askAboutThis(question: string, extraContext?: string): Promise<void> {
+  const payload: ExplainPayload = state.lastPayload ?? {
+    scene: "explore",
+    selectionId: "none",
+    title: "no current selection",
+    rows: [],
+    cypher: "// no scenario has been run yet",
+  };
+  if (!question.trim()) return;
   state.busy = true;
   notify();
   const lang = state.lang;
@@ -284,11 +301,20 @@ export async function askAboutThis(question: string): Promise<void> {
     const obligations = await listObligations();
     const ai = new GoogleGenAI({ apiKey });
     const scopeRule =
-      lang === "fr"
-        ? `\nLa question porte sur la sélection courante (${payload.selectionId}). N'utilise les outils QUE pour cette sélection ; ne parcours pas le reste du graphe.`
-        : `\nThe question concerns the current selection (${payload.selectionId}). Use the tools ONLY for this selection; do not roam the rest of the graph.`;
+      payload.selectionId === "none"
+        ? lang === "fr"
+          ? "\nAucune sélection courante : appuie-toi sur l'indice fourni et n'utilise les outils que pour illustrer le concept, avec parcimonie."
+          : "\nNo current selection: rely on the provided hint and use the tools only to illustrate the concept, sparingly."
+        : lang === "fr"
+          ? `\nLa question porte sur la sélection courante (${payload.selectionId}). N'utilise les outils QUE pour cette sélection ; ne parcours pas le reste du graphe.`
+          : `\nThe question concerns the current selection (${payload.selectionId}). Use the tools ONLY for this selection; do not roam the rest of the graph.`;
     const history: object[] = [
-      { role: "user", parts: [{ text: `${userMessage(payload, obligations, lang)}\n\nQuestion: ${question}` }] },
+      {
+        role: "user",
+        parts: [{
+          text: `${userMessage(payload, obligations, lang)}${extraContext ? `\n${extraContext}` : ""}\n\nQuestion: ${question}`,
+        }],
+      },
     ];
     for (let i = 0; i < 4; i++) {
       const resp = await ai.models.generateContent({
