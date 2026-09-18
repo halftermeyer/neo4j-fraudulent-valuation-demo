@@ -13,7 +13,7 @@ governance — IPV, controls, approvals, committees, escalation — fails to cat
 | ![Ingest](docs/screenshots/1-ingested.png) *Explore — in-app ingest, layer by layer* | ![Reveal](docs/screenshots/2-explore-reveal.png) *Explore — one position, one hop at a time* |
 | ![S1](docs/screenshots/3-s1-conjunction.png) *S1 — conjunction + Louvain community* | ![S2](docs/screenshots/4-s2-chronology.png) *S2 — chronology + expected-vs-observed* |
 | ![S3](docs/screenshots/5-s3-pattern.png) *S3 — the abstracted :Pattern* | ![S4](docs/screenshots/6-s4-readacross.png) *S4 — read-across, ranked partial matches* |
-| ![Policy](docs/screenshots/7-policy-panel.png) *Policy panel — live thresholds* | ![Assistant](docs/screenshots/8-assistant.png) *Assistant — typed tools, audited Cypher* |
+| ![Policy](docs/screenshots/7-policy-panel.png) *Policy panel — live thresholds* | ![Assistant](docs/screenshots/8-assistant.png) *Assistant — typed tools, graph answers, audited Cypher* |
 
 ## What's in the graph
 

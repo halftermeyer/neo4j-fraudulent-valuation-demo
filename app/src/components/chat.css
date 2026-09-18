@@ -13,6 +13,12 @@
   padding: 4px 2px 12px;
 }
 
+/* flex children default to shrink:1 — when the thread overflows, the small
+   tool bubbles get vertically squashed. Never shrink messages. */
+.chat-messages > * {
+  flex-shrink: 0;
+}
+
 .chat-suggestions {
   display: flex;
   flex-wrap: wrap;
