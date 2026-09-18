@@ -23,6 +23,9 @@ make data          # one-time: downloads & caches OSBAP/FITRS/FRED, generates th
 cd app && npm install && npm run dev    # http://localhost:5173
 ```
 
+(Vite picks the next free port — 5174, 5175… — if other dev servers are running;
+check the terminal line before opening the browser tab you'll present from.)
+
 `inputs/.env` holds the Neo4j credentials and the Gemini key (`make env` derives
 `.env` and `app/.env`). Set Policy-panel parameters **before** the demo if the
 customer sent their own thresholds; the panel exists so you can change them live
@@ -88,6 +91,14 @@ neither should your analysts."
 Add the signals one at a time: PnL signals… price overrides… methodology changes…
 IPV reviews… governance gaps. *Talking point:* "Watch the shape form. Every single
 node you just saw is, on its own, below threshold somewhere."
+
+**The node inspector, once for the whole demo:** click any node, in any graph view
+(here, S1, S3, the Assistant's answers). A panel opens with the node's properties,
+its relationship summary (`← ON_POSITION × 47`, `→ OVERRIDDEN_BY × 12`…), and —
+for case events — the public-record citation in a "Source:" box. The lookup runs
+through the same audited query path as everything else. Where the node is
+position-anchored, the inspector offers **Open in Explore →**; on desks, rules,
+patterns or attributes it deliberately doesn't — Explore starts from a Position.
 
 **✦ Explain beat:** click the POS-TP node, then **✦ Explain** in the inspector.
 The companion panel opens with a grounded 3–5 sentence read of the node and its
@@ -248,8 +259,11 @@ free-form text-to-Cypher — and every statement it triggers lands in the audit 
 Under the answer, flip the **graph / table** toggle: the same subgraph the tools
 returned, in the scenarios' colours with the timeline pinned left-to-right in event
 time — or sortable grids whose event ids jump straight into Explore's node
-inspector. The suggestion chips never disappear: the one you clicked is replaced by
-a contextual follow-up, so the conversation path is always one click away.
+inspector. Clicking a node in the answer graph inspects it in place (same inspector
+as everywhere else); its **Open in Explore →** button does the jump when the node is
+position-anchored. The suggestion chips never disappear: the one you clicked is
+replaced by a contextual follow-up, so the conversation path is always one click
+away.
 *Talking point:* "This was one of your validation criteria: a natural-language,
 chronological investigation. Note that it answers with control obligation IDs from
 your own policy, and that the drawer shows exactly what it ran — the assistant has
