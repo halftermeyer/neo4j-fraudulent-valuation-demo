@@ -77,7 +77,13 @@ export default function CompanionPanel() {
         <div className="companion-head-actions">
           {langBtn("en", "EN")}
           {langBtn("fr", "FR")}
-          <button className="companion-lang" onClick={() => toggleCompanion(false)}>✕</button>
+          <button
+            className="companion-lang"
+            data-testid="companion-close"
+            onClick={() => toggleCompanion(false)}
+          >
+            ✕
+          </button>
         </div>
       </div>
       <p className="companion-hint">

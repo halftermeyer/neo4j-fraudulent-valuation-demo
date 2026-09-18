@@ -28,31 +28,58 @@ def srt_time(t: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def build_cues(scenes: list[dict], offset: float) -> list[tuple[float, float, str]]:
-    cues = []
+FAST_BADGE = "⏩ model tool calls — fast-forwarded"
+
+
+def fast_windows(scenes: list[dict]) -> list[dict]:
+    """All fast-forward windows, absolute recording time, sorted."""
+    out = [w for sc in scenes for w in sc.get("fast") or []]
+    return sorted(out, key=lambda w: w["from"])
+
+
+def make_remap(windows: list[dict]):
+    """Recording time -> compressed-output time (fast windows sped up)."""
+    def remap(t: float) -> float:
+        out = t
+        for w in windows:
+            a, b, k = w["from"], w["to"], w["speed"]
+            if t <= a:
+                break
+            span = min(t, b) - a
+            out -= span * (1 - 1 / k)
+        return out
+    return remap
+
+
+def build_cues(scenes: list[dict], offset: float, remap) -> list[tuple[float, float, str, str]]:
+    """(start, end, text, kind) — kind 'sub' (bottom) or 'badge' (top right)."""
+    cues: list[tuple[float, float, str, str]] = []
     for sc in scenes:
         sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", sc["narration"]) if x.strip()]
         if not sentences:
             continue
-        start = sc["start"] + offset
-        end = sc["end"] + offset
+        start = remap(sc["start"]) + offset
+        end = remap(sc["end"]) + offset
         span = max(end - start, 1.0)
         weights = [len(x.split()) for x in sentences]
         total_w = sum(weights)
         t = start
         for sent, w in zip(sentences, weights):
             dur = span * w / total_w
-            cues.append((t, min(t + dur, end), sent))
+            cues.append((t, min(t + dur, end), sent, "sub"))
             t += dur
+        for w in sc.get("fast") or []:
+            cues.append((remap(w["from"]) + offset, remap(w["to"]) + offset, FAST_BADGE, "badge"))
     return cues
 
 
-def write_srt(cues: list[tuple[float, float, str]], out: Path) -> None:
+def write_srt(cues: list[tuple[float, float, str, str]], out: Path) -> None:
     lines = []
-    for i, (a, b, text) in enumerate(cues, 1):
+    subs = [c for c in cues if c[3] == "sub"]
+    for i, (a, b, text, _) in enumerate(subs, 1):
         lines += [str(i), f"{srt_time(a)} --> {srt_time(b)}", text, ""]
     out.write_text("\n".join(lines))
-    print(f"wrote {len(cues)} subtitle cues -> {out}")
+    print(f"wrote {len(subs)} subtitle cues -> {out}")
 
 
 def ffmpeg_has_subtitles_filter() -> bool:
@@ -72,12 +99,18 @@ def render_cue_pngs(cues: list[tuple[float, float, str]], out_dir: Path) -> list
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1920, "height": 200})
-        for i, (_, _, text) in enumerate(cues):
+        for i, (_, _, text, kind) in enumerate(cues):
+            if kind == "badge":
+                style = ("display:inline-block;background:rgba(95,61,196,.88);color:#fff;"
+                         "font:700 24px/1.3 Inter,Helvetica,Arial,sans-serif;"
+                         "padding:8px 20px;border-radius:18px")
+            else:
+                style = ("display:inline-block;background:rgba(10,16,30,.62);color:#fff;"
+                         "font:600 30px/1.35 Inter,Helvetica,Arial,sans-serif;"
+                         "padding:10px 26px;border-radius:8px;max-width:1500px;text-align:center")
             page.set_content(
                 f"""<body style="margin:0;display:flex;justify-content:center;align-items:flex-start;background:transparent">
-                <div id="cue" style="display:inline-block;background:rgba(10,16,30,.62);color:#fff;
-                font:600 30px/1.35 Inter,Helvetica,Arial,sans-serif;padding:10px 26px;border-radius:8px;
-                max-width:1500px;text-align:center">{text}</div></body>"""
+                <div id="cue" style="{style}">{text}</div></body>"""
             )
             p = out_dir / f"cue-{i:03d}.png"
             page.locator("#cue").screenshot(path=str(p), omit_background=True)
@@ -100,12 +133,21 @@ def main() -> None:
         if not p.exists():
             raise SystemExit(f"missing artifact: {p}")
 
+    # fast-forward windows ("time travel" through dead LLM waits): the video is
+    # sped up inside each window, and every downstream timestamp (audio delays,
+    # cue windows, SRT) is remapped through the same function
+    windows = fast_windows(scenes)
+    remap = make_remap(windows)
+    if windows:
+        for w in windows:
+            print(f"fast-forward {w['from']:.1f}s → {w['to']:.1f}s at {w['speed']:.0f}×")
+
     # sidecar SRT aligned to the FINAL video (title offset); the burn happens on
-    # the main transcode, so those cues use recording time (offset 0) — the
-    # concat-copied _cat.mp4 has stitched timestamps that break enable=between()
+    # the main transcode, so those cues use remapped recording time (offset 0) —
+    # the concat-copied _cat.mp4 has stitched timestamps that break enable=between()
     srt = DIST / "subtitles.srt"
-    write_srt(build_cues(scenes, TITLE_SECONDS), srt)
-    cues = build_cues(scenes, 0.0)
+    write_srt(build_cues(scenes, TITLE_SECONDS, remap), srt)
+    cues = build_cues(scenes, 0.0, remap)
 
     title_mp4 = DIST / "_title.mp4"
     main_mp4 = DIST / "_main.mp4"
@@ -126,7 +168,7 @@ def main() -> None:
     cmd = ["ffmpeg", "-y", "-i", str(webm)]
     for p in pngs:
         cmd += ["-i", str(p)]
-    wavs = [(sc["start"], DIST / sc["audio"]) for sc in scenes if sc.get("audio")]
+    wavs = [(remap(sc["start"]), DIST / sc["audio"]) for sc in scenes if sc.get("audio")]
     audio_base = 1 + len(pngs)
     if wavs:
         for _, wav in wavs:
@@ -134,12 +176,32 @@ def main() -> None:
     else:
         cmd += ["-f", "lavfi", "-t", "9999", "-i", "anullsrc=r=48000:cl=stereo"]
 
-    parts = [f"[0:v]scale=1920:1080,fps=30[vbase]"]
+    parts = [f"[0:v]scale=1920:1080,fps=30[vscaled]"]
+    if windows:
+        # alternate normal/fast segments: trim each, speed up the fast ones, concat
+        bounds: list[tuple[float, float | None, float]] = []  # (from, to|None, speed)
+        cursor = 0.0
+        for w in windows:
+            if w["from"] > cursor:
+                bounds.append((cursor, w["from"], 1.0))
+            bounds.append((w["from"], w["to"], w["speed"]))
+            cursor = w["to"]
+        bounds.append((cursor, None, 1.0))
+        parts.append(f"[vscaled]split={len(bounds)}" + "".join(f"[s{i}]" for i in range(len(bounds))))
+        for i, (a, b, k) in enumerate(bounds):
+            trim = f"trim={a:.3f}:{b:.3f}" if b is not None else f"trim=start={a:.3f}"
+            pts = "PTS-STARTPTS" if k == 1.0 else f"(PTS-STARTPTS)/{k:.0f}"
+            parts.append(f"[s{i}]{trim},setpts={pts}[p{i}]")
+        parts.append("".join(f"[p{i}]" for i in range(len(bounds)))
+                     + f"concat=n={len(bounds)}:v=1:a=0[vbase]")
+    else:
+        parts.append("[vscaled]null[vbase]")
     prev = "vbase"
-    for i, (a, b, _) in enumerate(cues):
+    for i, (a, b, _, kind) in enumerate(cues):
         label = f"v{i}" if i < len(cues) - 1 else "vout"
+        pos = "W-w-36:36" if kind == "badge" else "(W-w)/2:H-h-42"
         parts.append(
-            f"[{prev}][{i + 1}:v]overlay=(W-w)/2:H-h-42:enable='between(t,{a:.2f},{b:.2f})'[{label}]"
+            f"[{prev}][{i + 1}:v]overlay={pos}:enable='between(t,{a:.2f},{b:.2f})'[{label}]"
         )
         prev = label
     if wavs:

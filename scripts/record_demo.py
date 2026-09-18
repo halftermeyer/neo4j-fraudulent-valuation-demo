@@ -89,12 +89,30 @@ def words_estimate_seconds(text: str) -> float:
 
 
 class Recorder:
+    FAST_SPEED = 8.0  # "time travel": dead waits are compressed 8× at assembly
+
     def __init__(self, page, t_start: float):
         self.page = page
         self.t_start = t_start
+        self.scene_fast: list[dict] = []  # fast-forward windows of the current scene
+        self._fast_t0: float | None = None
 
     def now(self) -> float:
         return time.monotonic() - self.t_start
+
+    def fast_begin(self) -> None:
+        self._fast_t0 = self.now()
+
+    def fast_end(self) -> None:
+        """Close a fast-forward window (absolute recording time). The assembler
+        speeds this interval up FAST_SPEED× and remaps everything after it."""
+        if self._fast_t0 is None:
+            return
+        t1 = self.now()
+        if t1 - self._fast_t0 > 3.0:  # not worth a whoosh below 3 s
+            self.scene_fast.append(
+                {"from": round(self._fast_t0, 3), "to": round(t1, 3), "speed": self.FAST_SPEED})
+        self._fast_t0 = None
 
     # ── shared helpers ──
     def tid(self, testid: str, timeout: int = 30_000):
@@ -233,8 +251,15 @@ class Recorder:
         # and retry ONCE with a typed question before failing loudly.
         from playwright.sync_api import TimeoutError as PWTimeout
 
+        # the companion panel (left open by the explain scene) would cover the
+        # question — close it first
+        if self.page.get_by_test_id("companion-close").count() > 0:
+            self.page.get_by_test_id("companion-close").click()
+            self.page.wait_for_timeout(400)
         self.tab("Assistant")
         self.tid("chat-chip-0").click()
+        self.page.wait_for_timeout(1_500)  # let the question bubble land on screen
+        self.fast_begin()  # …then time-travel through the model's tool calls
         answered = ".answer-viz, .chat-bubble.chat-assistant:not(.chat-thinking)"
 
         def got_real_answer() -> bool:
@@ -255,6 +280,8 @@ class Recorder:
             self.page.locator(answered).first.wait_for(timeout=240_000)
         if not got_real_answer():
             raise RuntimeError("assistant-question: no assistant answer after retry")
+        self.fast_end()  # answer is on screen — back to real time
+        self.frame_on(self.page.locator(".answer-viz, .chat-bubble.chat-assistant").last, "end")
         self.page.wait_for_timeout(3_000)
 
     def scene_outro(self):
@@ -325,6 +352,7 @@ def main() -> None:
         rec = Recorder(page, time.monotonic())
         for s in scenes:
             sid = s["id"]
+            rec.scene_fast = []
             t0 = rec.now()
             print(f"scene {sid} @ {t0:6.1f}s")
             try:
@@ -335,7 +363,10 @@ def main() -> None:
                 browser.close()
                 sys.exit(1)
             elapsed = rec.now() - t0
-            hold = max(0.0, durations[sid] + 1.0 - elapsed)
+            # fast-forward windows are compressed at assembly — the narration must
+            # cover the COMPRESSED scene, so hold against the compressed elapsed
+            saved = sum((w["to"] - w["from"]) * (1 - 1 / w["speed"]) for w in rec.scene_fast)
+            hold = max(0.0, durations[sid] + 1.0 - (elapsed - saved))
             if hold:
                 page.wait_for_timeout(int(hold * 1000))
             results.append({
@@ -344,6 +375,7 @@ def main() -> None:
                 "end": round(rec.now(), 2),
                 "narration": s["narration"],
                 "audio": str(audio[sid].relative_to(DIST)) if audio[sid] else None,
+                "fast": rec.scene_fast,
             })
 
         video = page.video
