@@ -11,9 +11,9 @@ governance — IPV, controls, approvals, committees, escalation — fails to cat
 | | |
 |---|---|
 | ![Ingest](docs/screenshots/1-ingested.png) *Explore — in-app ingest, layer by layer* | ![Reveal](docs/screenshots/2-explore-reveal.png) *Explore — one position, one hop at a time* |
-| ![S1](docs/screenshots/3-s1-conjunction.png) *S1 — conjunction + Louvain community* | ![S2](docs/screenshots/4-s2-chronology.png) *S2 — chronology + expected-vs-observed* |
+| ![S1](docs/screenshots/3-s1-conjunction.png) *S1 — conjunction, financial timeline first* | ![S2](docs/screenshots/4-s2-chronology.png) *S2 — price timeline + chronology + expected-vs-observed* |
 | ![S3](docs/screenshots/5-s3-pattern.png) *S3 — the abstracted :Pattern* | ![S4](docs/screenshots/6-s4-readacross.png) *S4 — read-across, ranked partial matches* |
-| ![Policy](docs/screenshots/7-policy-panel.png) *Policy panel — live thresholds* | ![Assistant](docs/screenshots/8-assistant.png) *Assistant — typed tools, graph answers, audited Cypher* |
+| ![Policy](docs/screenshots/7-policy-panel.png) *Policy — placeholder thresholds, rule provenance, computed gaps* | ![Assistant](docs/screenshots/8-assistant.png) *Assistant — typed tools, graph answers, audited Cypher* |
 
 ## What's in the graph
 
@@ -91,9 +91,25 @@ GEMINI_API_KEY=...          # Assistant tab + LLM test
   **S4 Read-across**: exact and partial matches ranked (score = satisfied
   REQUIRES / total), pattern widenable live, GDS link prediction validated
   against held-out ground truth (stated on screen), false positive one click
-  from its exculpatory chronology.
-  **Policy panel**: every `params_json` threshold editable; Apply re-runs the gap
-  query (no regeneration); Reset restores CSV defaults.
+  from its exculpatory chronology (or its 📈 timeline, expandable in place).
+- **PositionTimeline** (`lightweight-charts`, pinned) — the financial view a
+  conjunction opens on: daily TRACE prices as candles (real per-day OHLC when
+  several trades printed) or ticks with calendar gaps kept as gaps, the
+  proxy-model price as a continuous line (line-to-candle distance = divergence),
+  one marker per governance event, dashed vertical lines at MISSED/LATE control
+  due dates, a cumulative broken-control score pane, and a marker popover showing
+  the `traderMark`/`modelPrice`/`ipvPrice` written on the event node by the
+  generator (never recomputed client-side) plus the rules it concerns — all fed
+  by ONE audit-logged Cypher per position that inlines `data/gap_query.cypher`
+  verbatim. Reused in S1 (with a "Show graph" toggle), S2 and S4.
+  **Policy** (step 2 of the flow, before S1): formalisation of the bank's own
+  control framework — every `params_json` threshold is an indicative placeholder
+  editable live, to be replaced by the institution's values (never
+  regulation-derived; per-rule provenance with verified quotes in
+  [docs/rules-provenance.md](docs/rules-provenance.md)); the visible **Compute
+  governance gaps** step runs the gap query + materialisation, shows counts per
+  rule (MET/LATE/MISSED) and unlocks S1 for the session; Reset restores CSV
+  defaults.
 - **Assistant** — not text-to-Cypher: 7 typed tools over the same query functions
   (`timeline`, `expected_controls`, `who_approved`, `divergence`, `read_across`,
   `policy_params`, `list_positions`), composed by Gemini; every generated Cypher

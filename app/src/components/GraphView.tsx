@@ -14,6 +14,7 @@ import { InteractiveNvlWrapper } from "@neo4j-nvl/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { captureCypher } from "../lib/companion";
 import { openInExplore } from "../lib/exploreLink";
+import { registerGraphFocus } from "../lib/focus";
 import { runQuery, withGroup } from "../lib/neo4j";
 import { ExplainButton } from "./CompanionPanel";
 
@@ -238,6 +239,8 @@ export default function GraphView({
   height = 480,
   autoInspectId = null,
   showExploreLink = true,
+  inspectOnClick = true,
+  hintText,
 }: {
   nodes: GNode[];
   rels: GRel[];
@@ -247,13 +250,40 @@ export default function GraphView({
   autoInspectId?: string | null;
   /** "Open in Explore →" in the inspector — pass false when already in Explore */
   showExploreLink?: boolean;
+  /** false for views whose nodes are NOT data nodes (schema peek): clicks go to
+   *  onNodeClick only, no inspector, and the hint must not promise one */
+  inspectOnClick?: boolean;
+  hintText?: string;
 }) {
   const nvlRef = useRef<NVL | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
   const [inspected, setInspected] = useState<NodeDetails | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+
+  // companion focus: when an explanation cites a node id shown here, select it
+  // and bring it into view (lib/focus.ts) before the text is displayed
+  const nodeIdSet = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
+  useEffect(
+    () =>
+      registerGraphFocus({
+        has: (id) => nodeIdSet.has(id),
+        focus: (id) => {
+          setFocusId(id);
+          containerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          try {
+            nvlRef.current?.fit([id]);
+          } catch {
+            // canvas not ready — the selection ring still marks the node
+          }
+        },
+      }),
+    [nodeIdSet],
+  );
 
   const inspect = async (id: string) => {
     onNodeClick?.(id);
+    if (!inspectOnClick) return;
     setInspected(await fetchNodeDetails(id));
   };
 
@@ -280,10 +310,11 @@ export default function GraphView({
           captions: [{ value: n.caption ?? n.id }],
           color: n.grey ? GREY : (n.color ?? TYPE_COLORS[n.label] ?? "#5a6b85"),
           size: n.size ?? (n.label === "Position" || n.label === "Incident" ? 34 : 20),
+          selected: n.id === focusId,
           ...pos,
         };
       }),
-    [nodes],
+    [nodes, focusId],
   );
   const nvlRels: NvlRel[] = useMemo(
     () =>
@@ -314,7 +345,7 @@ export default function GraphView({
   }, [idSignature]);
 
   return (
-    <div className="graph-canvas" style={{ height, position: "relative" }}>
+    <div className="graph-canvas" ref={containerRef} style={{ height, position: "relative" }}>
       <InteractiveNvlWrapper
         mouseEventCallbacks={{
           onNodeClick: (node) => void inspect(String(node.id)),
@@ -334,7 +365,7 @@ export default function GraphView({
           showExploreLink={showExploreLink}
         />
       )}
-      <div className="graph-canvas-hint">click a node to inspect it</div>
+      <div className="graph-canvas-hint">{hintText ?? "click a node to inspect it"}</div>
     </div>
   );
 }

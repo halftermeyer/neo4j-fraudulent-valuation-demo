@@ -27,7 +27,9 @@ SCRIPT_MD = ROOT / "demo-script.md"
 
 KNOWN_SCENES = [
     "intro", "ingest-market", "ingest-governance", "ingest-cases",
-    "explore-position", "explore-signals", "s1-conjunction", "s1-community",
+    "schema-peek", "explore-position", "explore-signals",
+    "policy-framework", "policy-compute",
+    "s1-conjunction", "s1-community",
     "s2-chronology", "s2-gaps", "s3-pattern", "s4-readacross", "s4-predict",
     "s4-false-positive", "policy-change", "explain-click", "assistant-question",
     "outro",
@@ -103,15 +105,17 @@ class Recorder:
     def fast_begin(self) -> None:
         self._fast_t0 = self.now()
 
-    def fast_end(self) -> None:
+    def fast_end(self, label: str = "fast-forwarded") -> None:
         """Close a fast-forward window (absolute recording time). The assembler
-        speeds this interval up FAST_SPEED× and remaps everything after it."""
+        speeds this interval up FAST_SPEED× and remaps everything after it;
+        `label` lands in the on-screen ⏩ badge."""
         if self._fast_t0 is None:
             return
         t1 = self.now()
         if t1 - self._fast_t0 > 3.0:  # not worth a whoosh below 3 s
             self.scene_fast.append(
-                {"from": round(self._fast_t0, 3), "to": round(t1, 3), "speed": self.FAST_SPEED})
+                {"from": round(self._fast_t0, 3), "to": round(t1, 3),
+                 "speed": self.FAST_SPEED, "label": label})
         self._fast_t0 = None
 
     # ── shared helpers ──
@@ -128,13 +132,19 @@ class Recorder:
 
     def ingest(self, layer: str):
         self.tid(f"ingest-{layer}").click()
+        # the load is a long nondeterministic wait (the daily price series made the
+        # market layer heavy) — time-travel through it, like the assistant's wait
+        self.fast_begin()
         self.page.get_by_test_id(f"ingest-{layer}").get_by_text("Loaded ✓").wait_for(timeout=600_000)
+        self.fast_end("data loading")
         self.page.wait_for_timeout(800)
 
     # ── one method per scene id ──
     def scene_intro(self):
         self.tid("reset-db").click()
+        self.fast_begin()
         self.page.get_by_text("database emptied").wait_for(timeout=120_000)
+        self.fast_end("database reset")
         self.page.wait_for_timeout(600)
 
     def scene_ingest_market(self):
@@ -153,7 +163,16 @@ class Recorder:
             "(el, block) => el.scrollIntoView({behavior: 'smooth', block})", block)
         self.page.wait_for_timeout(settle_ms)
 
+    def scene_schema_peek(self):
+        self.tid("schema-peek-governance").click()
+        self.page.locator(".schema-peek-pop .schema-peek-sample").wait_for(timeout=60_000)
+        self.frame_on(self.page.locator(".schema-peek-pop"), "center")
+        self.page.wait_for_timeout(1_500)
+
     def scene_explore_position(self):
+        # click-away closes the schema-peek popover left open by the previous scene
+        self.page.mouse.click(24, 620)
+        self.page.wait_for_timeout(400)
         self.tid("select-position").select_option("POS-TP")
         for step in ("step-1", "step-2", "step-3"):
             self.tid(step).click()
@@ -172,18 +191,35 @@ class Recorder:
         self.frame_on(self.page.locator(".graph-canvas"), "end")
         self.page.wait_for_timeout(2_500)
 
-    def scene_s1_conjunction(self):
+    def scene_policy_framework(self):
         self.tab("Scenarios")
+        self.tid("subtab-policy").click()
+        self.page.get_by_text("R1", exact=False).first.wait_for(timeout=60_000)
+        self.frame_on(self.page.locator(".policy-grid"), "start")
+        self.page.wait_for_timeout(1_500)
+
+    def scene_policy_compute(self):
+        self.frame_on(self.tid("policy-compute"), "center")
+        self.tid("policy-compute").click()
+        self.tid("gap-summary", timeout=120_000)
+        self.frame_on(self.tid("gap-summary"), "center")
+        self.page.wait_for_timeout(1_500)
+
+    def scene_s1_conjunction(self):
         self.tid("subtab-s1").click()
         self.tid("s1-run").click()
         self.page.get_by_text("Positions ranked").wait_for(timeout=120_000)
+        # the conjunction opens on the FINANCIAL timeline — wait for the chart
+        self.page.locator(".position-timeline canvas").first.wait_for(timeout=120_000)
         self.frame_on(self.page.locator(".s1-layout"), "start")
         self.page.wait_for_timeout(2_500)
 
     def scene_s1_community(self):
+        self.tid("s1-show-graph").click()
+        self.page.locator(".s1-graph .graph-canvas").first.wait_for(timeout=60_000)
         self.tid("s1-louvain").click()
         self.page.get_by_text("Louvain found").wait_for(timeout=300_000)
-        self.frame_on(self.page.locator(".graph-canvas"), "center")
+        self.frame_on(self.page.locator(".s1-graph .graph-canvas"), "center")
         self.page.wait_for_timeout(2_500)
 
     def scene_s2_chronology(self):
@@ -191,7 +227,10 @@ class Recorder:
         self.tid("s2-position").fill("POS-TP")
         self.tid("s2-run").click()
         self.page.get_by_text("MISSED").first.wait_for(timeout=120_000)
-        self.page.wait_for_timeout(1_000)
+        # the financial timeline sits above the chronology — let it render and frame it
+        self.page.locator(".position-timeline canvas").first.wait_for(timeout=120_000)
+        self.frame_on(self.page.locator(".position-timeline"), "center")
+        self.page.wait_for_timeout(1_500)
 
     def scene_s2_gaps(self):
         self.page.get_by_text("Expected vs observed").first.scroll_into_view_if_needed()
@@ -222,6 +261,7 @@ class Recorder:
         self.tid("s4-row-POS-FP").click()
         self.tid("s2-run").click()
         self.page.get_by_text("MISSED").first.wait_for(timeout=120_000)
+        self.page.locator(".position-timeline canvas").first.wait_for(timeout=120_000)
         self.page.wait_for_timeout(1_000)
 
     def scene_policy_change(self):
@@ -280,7 +320,13 @@ class Recorder:
             self.page.locator(answered).first.wait_for(timeout=240_000)
         if not got_real_answer():
             raise RuntimeError("assistant-question: no assistant answer after retry")
-        self.fast_end()  # answer is on screen — back to real time
+        self.fast_end("model tool calls")  # answer is on screen — back to real time
+        # single-position chronology → the answer opens on its financial timeline;
+        # give the chart a beat to render (non-fatal if the model answered text-only)
+        try:
+            self.page.locator(".answer-viz canvas").first.wait_for(timeout=15_000)
+        except Exception:
+            print("  assistant: no timeline canvas in the answer (text-only?)", flush=True)
         self.frame_on(self.page.locator(".answer-viz, .chat-bubble.chat-assistant").last, "end")
         self.page.wait_for_timeout(3_000)
 

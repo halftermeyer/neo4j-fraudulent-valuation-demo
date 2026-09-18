@@ -30,7 +30,13 @@ Read `README.md` for architecture, `DATA_PLAN.md` for the validated data design,
 4. Read-across matches `:RiskAttribute` nodes and GovernanceGap classes, never
    instrument fields. Every event node: `:Event` label, `at` datetime,
    per-position `[:NEXT {timeDelta}]` chain. Case events keep `sourceAt`
-   (authentic date, TP clock +10y) and `sourceRef` (citation).
+   (authentic date, TP clock +10y) and `sourceRef` (citation). The six marker
+   event types carry `traderMark`/`modelPrice`/`ipvPrice` written by
+   `annotate_event_prices` in the generator — the PositionTimeline popover reads
+   them from the graph, never recomputes client-side; the timeline is fed by ONE
+   query per position (`app/src/lib/timelineQuery.ts`) that inlines the gap query
+   verbatim. Daily MarketPrice nodes have `positionId=null` (kept OUT of NEXT
+   chains — acceptance sets depend on it).
 5. Every query the app runs goes through `runQuery` in `app/src/lib/neo4j.ts`
    (audit drawer). The Assistant/companion never do free-form text-to-Cypher —
    typed tools only (`assistantTools.ts`, mirrored by `mcp_server.py`).

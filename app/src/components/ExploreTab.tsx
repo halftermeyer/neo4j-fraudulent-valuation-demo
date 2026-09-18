@@ -16,6 +16,7 @@ import {
 } from "../lib/queries";
 import { consumePendingNode, onExploreLink } from "../lib/exploreLink";
 import GraphView, { type GNode, type GRel } from "./GraphView";
+import SchemaPeek from "./SchemaPeek";
 import GlossaryText from "./Term";
 import "./explore.css";
 
@@ -240,13 +241,24 @@ export default function ExploreTab() {
     setStep(2);
   };
 
-  const addChart = async () => {
+  // the chart is BOUND to the graph: its producing Cypher (divergence) re-runs
+  // whenever its context changes — position (incl. deep links) or a fresh layer
+  // ingest — never a static client-side array
+  const countsSig = useMemo(
+    () => Object.entries(counts).map(([k, v]) => `${k}:${v}`).join("|"),
+    [counts],
+  );
+  const refreshChart = useCallback(async () => {
     const rows = (await withGroup(`Explore: price vs proxy of ${selected}`, () =>
       divergence(selected),
     )) as unknown as DivRow[];
     setChart(rows.filter((r) => r.observed !== null));
-    setStep(3);
-  };
+  }, [selected]);
+  useEffect(() => {
+    if (step >= 3 && selected) void refreshChart();
+  }, [step, selected, countsSig, refreshChart]);
+
+  const addChart = () => setStep(3); // the effect above runs (and re-runs) the query
 
   const addSignals = async (kind: SignalKind) => {
     const queries: Record<SignalKind, { cypher: string; label: string; relType: string; caption: (r: Record<string, unknown>) => string }> = {
@@ -340,7 +352,9 @@ export default function ExploreTab() {
         <div className="ingest-grid">
           {LAYER_META.map((l) => (
             <div className={`ingest-card ${loadedFlags[l.name] ? "loaded" : ""}`} key={l.name}>
-              <h3>{l.title}</h3>
+              <h3>
+                {l.title} <SchemaPeek layer={l.name} />
+              </h3>
               <p>{l.desc}</p>
               <button
                 className="demo-btn"

@@ -1,0 +1,57 @@
+{
+  "_comment": "Mirrors docs/rules-provenance.md — keep in sync. Quotes verified against the linked texts (2026-09-18). Thresholds stay placeholders; 'regulation-informed' only when status is a requirement or guidance.",
+  "R1": {
+    "status": "supervisory guidance",
+    "source": "Fed/OCC SR 11-7, Guidance on Model Risk Management, §V",
+    "quote": "The range and rigor of validation activities conducted prior to first use of a model",
+    "url": "https://www.federalreserve.gov/supervisionreg/srletters/sr1107.htm"
+  },
+  "R2": {
+    "status": "regulatory requirement",
+    "source": "CRR Art. 105(8), Regulation (EU) No 575/2013",
+    "quote": "Verification of market prices and model inputs shall be performed … at least monthly",
+    "url": "https://lexparency.org/eu/CRR/ART_105/"
+  },
+  "R3": {
+    "status": "public case finding",
+    "source": "Senate PSI report, JPMorgan Chase Whale Trades (2013), Recommendation 3",
+    "quote": "deviations from midpoint prices … to be quantified, explained, and, if appropriate, investigated",
+    "url": "https://www.hsgac.senate.gov/wp-content/uploads/imo/media/doc/REPORT%20-%20JPMorgan%20Chase%20Whale%20Trades%20(4-12-13).pdf"
+  },
+  "R4": {
+    "status": "public case finding",
+    "source": "Senate PSI report, Recommendation 3 (windowed review)",
+    "quote": "deviations from midpoint prices over the course of a month",
+    "url": "https://www.hsgac.senate.gov/wp-content/uploads/imo/media/doc/REPORT%20-%20JPMorgan%20Chase%20Whale%20Trades%20(4-12-13).pdf"
+  },
+  "R5": {
+    "status": "regulatory requirement",
+    "source": "CRR Art. 105(8) — independence of the verifying unit",
+    "quote": "performed by a person or unit independent from persons or units that benefit",
+    "url": "https://lexparency.org/eu/CRR/ART_105/"
+  },
+  "R6": {
+    "status": "public case finding",
+    "source": "Senate PSI report, Finding of fact 3 (Hid Massive Losses)",
+    "quote": "hid over $660 million in losses in the Synthetic Credit Portfolio for several months",
+    "url": "https://www.hsgac.senate.gov/wp-content/uploads/imo/media/doc/REPORT%20-%20JPMorgan%20Chase%20Whale%20Trades%20(4-12-13).pdf"
+  },
+  "R7": {
+    "status": "supervisory guidance",
+    "source": "Fed/OCC SR 11-7, §V (ongoing monitoring)",
+    "quote": "periodic review—at least annually but more frequently if warranted—of each model",
+    "url": "https://www.federalreserve.gov/supervisionreg/srletters/sr1107.htm"
+  },
+  "R8": {
+    "status": "regulatory requirement",
+    "source": "CRR Art. 105(2) — valuation reporting lines",
+    "quote": "reporting lines … clear and independent of the front office",
+    "url": "https://lexparency.org/eu/CRR/ART_105/"
+  },
+  "R9": {
+    "status": "regulatory requirement",
+    "source": "CRR Art. 105(2)(a)",
+    "quote": "documented policies and procedures for the process of valuation",
+    "url": "https://lexparency.org/eu/CRR/ART_105/"
+  }
+}

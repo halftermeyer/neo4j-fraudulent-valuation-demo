@@ -28,7 +28,7 @@ def srt_time(t: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-FAST_BADGE = "⏩ model tool calls — fast-forwarded"
+FAST_BADGE_DEFAULT = "fast-forwarded"
 
 
 def fast_windows(scenes: list[dict]) -> list[dict]:
@@ -51,8 +51,20 @@ def make_remap(windows: list[dict]):
     return remap
 
 
+def audio_seconds(path: Path) -> float | None:
+    import contextlib
+    import wave
+    try:
+        with contextlib.closing(wave.open(str(path))) as w:
+            return w.getnframes() / w.getframerate()
+    except Exception:
+        return None
+
+
 def build_cues(scenes: list[dict], offset: float, remap) -> list[tuple[float, float, str, str]]:
-    """(start, end, text, kind) — kind 'sub' (bottom) or 'badge' (top right)."""
+    """(start, end, text, kind) — kind 'sub' (bottom) or 'badge' (top right).
+    Subtitle cues follow the NARRATION (the wav's duration), not the scene span:
+    a scene whose action outlasts its narration must not stretch the cues."""
     cues: list[tuple[float, float, str, str]] = []
     for sc in scenes:
         sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", sc["narration"]) if x.strip()]
@@ -60,6 +72,9 @@ def build_cues(scenes: list[dict], offset: float, remap) -> list[tuple[float, fl
             continue
         start = remap(sc["start"]) + offset
         end = remap(sc["end"]) + offset
+        wav_dur = audio_seconds(DIST / sc["audio"]) if sc.get("audio") else None
+        if wav_dur is not None:
+            end = min(end, start + wav_dur + 0.5)
         span = max(end - start, 1.0)
         weights = [len(x.split()) for x in sentences]
         total_w = sum(weights)
@@ -69,7 +84,8 @@ def build_cues(scenes: list[dict], offset: float, remap) -> list[tuple[float, fl
             cues.append((t, min(t + dur, end), sent, "sub"))
             t += dur
         for w in sc.get("fast") or []:
-            cues.append((remap(w["from"]) + offset, remap(w["to"]) + offset, FAST_BADGE, "badge"))
+            badge = f"⏩ {w.get('label', FAST_BADGE_DEFAULT)} — fast-forwarded"
+            cues.append((remap(w["from"]) + offset, remap(w["to"]) + offset, badge, "badge"))
     return cues
 
 

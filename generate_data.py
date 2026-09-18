@@ -28,7 +28,7 @@ import os
 import random
 import shutil
 import zipfile
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -123,13 +123,16 @@ G = Graph()
 
 # ══════════════════════════ LAYER 1 — real data ═════════════════════════════
 
-def derive_osbap() -> tuple[list[dict], dict[str, list[dict]]]:
-    """Return (universe stats per cusip, monthly month-end prices per selected cusip).
+def derive_osbap() -> tuple[list[dict], dict[str, list[dict]], dict[str, list[dict]]]:
+    """Return (universe stats per cusip, monthly month-end prices per selected cusip,
+    daily prices with per-day OHLC per selected cusip).
     Heavy pass cached under data/cache/derived/."""
     uni_f = DERIVED / "universe.json"
     px_f = DERIVED / "monthly_prices.json"
-    if uni_f.exists() and px_f.exists() and not os.getenv("REBUILD_DERIVED"):
-        return json.loads(uni_f.read_text()), json.loads(px_f.read_text())
+    daily_f = DERIVED / "daily_prices.json"
+    if uni_f.exists() and px_f.exists() and daily_f.exists() and not os.getenv("REBUILD_DERIVED"):
+        return (json.loads(uni_f.read_text()), json.loads(px_f.read_text()),
+                json.loads(daily_f.read_text()))
 
     import pyarrow.compute as pc
     import pyarrow.dataset as ds
@@ -143,7 +146,8 @@ def derive_osbap() -> tuple[list[dict], dict[str, list[dict]]]:
 
     cols = ["cusip_id", "trd_exctn_dt", "pr", "ytm", "mod_dur", "credit_spread",
             "trade_count", "dvolume", "prc_bid", "prc_ask", "db_type",
-            "ff30num", "bond_maturity", "bond_age", "bond_amt_outstanding"]
+            "ff30num", "bond_maturity", "bond_age", "bond_amt_outstanding",
+            "prc_first", "prc_hi", "prc_lo", "prc_last"]
     dataset = ds.dataset(pq_path)
     table = dataset.to_table(
         columns=cols,
@@ -202,6 +206,26 @@ def derive_osbap() -> tuple[list[dict], dict[str, list[dict]]]:
             "ask": None if pd.isna(r["prc_ask"]) else round(float(r["prc_ask"]), 3),
         })
 
+    # daily prices for selected cusips — one row per TRADED day (gaps are real);
+    # OHLC from the parquet's intraday aggregates when trade_count > 1
+    def num(v, nd=3):
+        return None if pd.isna(v) else round(float(v), nd)
+
+    seld = df[df["cusip_id"].isin(selected)].sort_values("trd_exctn_dt")
+    daily: dict[str, list[dict]] = {}
+    for _, r in seld.iterrows():
+        if pd.isna(r["pr"]):
+            continue
+        daily.setdefault(r["cusip_id"], []).append({
+            "date": r["trd_exctn_dt"].isoformat(),
+            "pr": num(r["pr"]),
+            "open": num(r["prc_first"]), "high": num(r["prc_hi"]),
+            "low": num(r["prc_lo"]), "close": num(r["prc_last"]),
+            "tradeCount": None if pd.isna(r["trade_count"]) else int(r["trade_count"]),
+            "ytm": None if pd.isna(r["ytm"]) else float(r["ytm"]),
+            "bid": num(r["prc_bid"]), "ask": num(r["prc_ask"]),
+        })
+
     uni_records = []
     for cusip, r in universe.iterrows():
         uni_records.append({
@@ -219,7 +243,8 @@ def derive_osbap() -> tuple[list[dict], dict[str, list[dict]]]:
     DERIVED.mkdir(parents=True, exist_ok=True)
     uni_f.write_text(json.dumps(uni_records))
     px_f.write_text(json.dumps(prices))
-    return uni_records, prices
+    daily_f.write_text(json.dumps(daily))
+    return uni_records, prices, daily
 
 
 def derive_fred() -> list[dict]:
@@ -314,7 +339,7 @@ def maturity_bucket(years: float | None) -> str:
 
 
 def build_market_layer():
-    universe, prices = derive_osbap()
+    universe, prices, daily = derive_osbap()
     fitrs = derive_fitrs({u["cusip"] for u in universe})
     curve_rows = derive_fred()
 
@@ -349,7 +374,8 @@ def build_market_layer():
         if u["chartable"]:
             chartable.append(u)
 
-    # monthly observed + proxy prices for chartable instruments
+    # proxy-model anchor per chartable instrument (price emission is deferred to
+    # emit_price_series once the held positions are known)
     proxy_ctx = {}
     for u in chartable:
         cusip = u["cusip"]
@@ -362,32 +388,73 @@ def build_market_layer():
         t0 = treasury_yield(curve_by_ym.get(base["date"][:7], {}), dur)
         spread0 = (y0 - t0) if t0 is not None else 2.0
         proxy_ctx[cusip] = {"p0": base["pr"], "y0": y0, "dur": dur, "spread0": spread0}
-        prev_div = 0.0
-        for s in series:
-            if s["pr"] is None:
+
+    def emit_price_series(held_cusips: set[str]):
+        """Observed + proxy prices for chartable instruments. Held positions get
+        the full DAILY TRACE series (with per-day OHLC where several trades
+        printed — gaps stay gaps); the rest of the universe keeps month-end
+        prices. Proxy-model points stay month-end (the continuous line), each
+        COMPARED_WITH the month-end observation as before."""
+        for u in chartable:
+            cusip = u["cusip"]
+            series = prices.get(cusip, [])
+            if cusip not in proxy_ctx:
                 continue
-            ym = s["date"][:7]
-            crow = curve_by_ym.get(ym)
-            t = treasury_yield(crow, dur) if crow else None
-            obs_id = f"MP-{cusip}-{s['date']}"
-            G.event("market", "MarketPrice", obs_id, None, f"{s['date']}T17:00:00",
-                    clean=s["pr"], ytm=s["ytm"], bid=s["bid"], ask=s["ask"], source="TRACE")
-            G.rel("market", "PRICE_OF", obs_id, f"INSTR-{cusip}")
-            if t is not None:
+            ctx = proxy_ctx[cusip]
+            base_pr, y0, dur, spread0 = ctx["p0"], ctx["y0"], ctx["dur"], ctx["spread0"]
+
+            def proxy_at(ym: str, ytm_obs: float | None, prev: float) -> tuple[float, float] | None:
+                crow = curve_by_ym.get(ym)
+                t = treasury_yield(crow, dur) if crow else None
+                if t is None:
+                    return None
                 proxy_y = t + spread0
-                proxy_p = round(base["pr"] * (1 - dur * (proxy_y - y0) / 100), 3)
-                if s["ytm"] is not None:
-                    y_obs = s["ytm"] * 100 if s["ytm"] < 1.5 else s["ytm"]
-                    div_bps = round((y_obs - proxy_y) * 100)
+                proxy_p = round(base_pr * (1 - dur * (proxy_y - y0) / 100), 3)
+                if ytm_obs is not None:
+                    y_obs = ytm_obs * 100 if ytm_obs < 1.5 else ytm_obs
+                    div = round((y_obs - proxy_y) * 100)
                 else:
-                    div_bps = round(prev_div)
-                prev_div = div_bps
-                px_id = f"MPX-{cusip}-{s['date']}"
-                G.event("market", "MarketPrice", px_id, None, f"{s['date']}T17:00:00",
+                    div = round(prev)
+                return proxy_p, div
+
+            def emit_proxy(obs_id: str, date_s: str, ym: str, ytm_obs, prev: float) -> float:
+                got = proxy_at(ym, ytm_obs, prev)
+                if got is None:
+                    return prev
+                proxy_p, div_bps = got
+                px_id = f"MPX-{cusip}-{date_s}"
+                G.event("market", "MarketPrice", px_id, None, f"{date_s}T17:00:00",
                         clean=max(proxy_p, 1.0), source="proxy-model")
                 G.rel("market", "PRICE_OF", px_id, f"INSTR-{cusip}")
                 G.rel("market", "COMPARED_WITH", obs_id, px_id, divergenceBps=div_bps)
-    return chartable, proxy_ctx
+                return div_bps
+
+            prev_div = 0.0
+            if cusip in held_cusips and daily.get(cusip):
+                drows = daily[cusip]
+                last_of_month = {r["date"][:7]: r["date"] for r in drows}  # last wins (sorted)
+                for r in drows:
+                    obs_id = f"MP-{cusip}-{r['date']}"
+                    ohlc = ({"open": r["open"], "high": r["high"], "low": r["low"],
+                             "close": r["close"], "tradeCount": r["tradeCount"]}
+                            if (r["tradeCount"] or 0) > 1 else {"tradeCount": r["tradeCount"]})
+                    G.event("market", "MarketPrice", obs_id, None, f"{r['date']}T17:00:00",
+                            clean=r["pr"], ytm=r["ytm"], bid=r["bid"], ask=r["ask"],
+                            source="TRACE", **ohlc)
+                    G.rel("market", "PRICE_OF", obs_id, f"INSTR-{cusip}")
+                    if last_of_month[r["date"][:7]] == r["date"]:
+                        prev_div = emit_proxy(obs_id, r["date"], r["date"][:7], r["ytm"], prev_div)
+            else:
+                for s in series:
+                    if s["pr"] is None:
+                        continue
+                    obs_id = f"MP-{cusip}-{s['date']}"
+                    G.event("market", "MarketPrice", obs_id, None, f"{s['date']}T17:00:00",
+                            clean=s["pr"], ytm=s["ytm"], bid=s["bid"], ask=s["ask"], source="TRACE")
+                    G.rel("market", "PRICE_OF", obs_id, f"INSTR-{cusip}")
+                    prev_div = emit_proxy(obs_id, s["date"], s["date"][:7], s["ytm"], prev_div)
+
+    return chartable, proxy_ctx, emit_price_series
 
 
 # ═════════════════════ LAYER 2 — synthetic governance ═══════════════════════
@@ -1031,6 +1098,71 @@ def build_fp_case(proxy_ctx: dict, fp: dict):
 
 # ═════════════════════════ chains, holdout, emit ════════════════════════════
 
+# events that carry the three prices at event time (batch-2 SME review): the
+# marker popover of the PositionTimeline is filled FROM THE GRAPH, never
+# recomputed client-side
+PRICE_EVENT_LABELS = {"MethodologyChange", "PriceOverride", "IPVReview",
+                      "Approval", "Escalation", "MAPReview"}
+
+
+def annotate_event_prices():
+    """Write traderMark / modelPrice / ipvPrice (nullable) at event time on the
+    six marker event types, for synthetic positions AND the encoded cases, from
+    the price series already emitted: observed TRACE prints / trader marks are
+    the mark; proxy-model / dealer-midpoint points are the model price."""
+    price_of = {r["from"]: r["to"] for r in G.rels if r["type"] == "PRICE_OF"}
+    obs: dict[str, list[tuple[str, float]]] = {}
+    model: dict[str, list[tuple[str, float]]] = {}
+    for nid, n in G.nodes.items():
+        if "MarketPrice" not in n["labels"]:
+            continue
+        clean, src, iid = n["props"].get("clean"), n["props"].get("source"), price_of.get(nid)
+        if clean is None or iid is None:
+            continue
+        d0 = n["props"]["at"][:10]
+        if src in ("TRACE", "trader mark"):
+            obs.setdefault(iid, []).append((d0, clean))
+        elif src in ("proxy-model", "dealer midpoint"):
+            model.setdefault(iid, []).append((d0, clean))
+    for s in list(obs.values()) + list(model.values()):
+        s.sort()
+    pos_instr = {r["from"]: r["to"] for r in G.rels
+                 if r["type"] == "OF_INSTRUMENT" and r["from"].startswith("POS-")}
+
+    def at_or_before(series: list[tuple[str, float]] | None, d0: str) -> float | None:
+        if not series:
+            return None
+        i = bisect_right(series, (d0, float("inf"))) - 1
+        return series[max(i, 0)][1]
+
+    annotated = 0
+    for n in G.nodes.values():
+        label, p = n["labels"][0], n["props"]
+        pid = p.get("positionId")
+        if label not in PRICE_EVENT_LABELS or not pid:
+            continue
+        iid = pos_instr.get(pid)
+        if not iid:
+            continue
+        d0 = str(p["at"])[:10]
+        mark = at_or_before(obs.get(iid), d0)
+        mdl = at_or_before(model.get(iid), d0)
+        if mark is None:
+            mark = mdl
+        if label == "PriceOverride" and isinstance(p.get("deviationBps"), (int, float)) and mark is not None:
+            sign = 1 if p.get("side") == "favourable" else -1
+            mark = mark * (1 + sign * p["deviationBps"] / 10000)
+        if mark is not None:
+            p["traderMark"] = round(mark, 3)
+        if mdl is not None:
+            p["modelPrice"] = round(mdl, 3)
+        if (label == "IPVReview" and mark is not None
+                and isinstance(p.get("divergenceBps"), (int, float))):
+            p["ipvPrice"] = round(mark * (1 - p["divergenceBps"] / 10000), 3)
+        annotated += 1
+    print(f"  event prices annotated on {annotated:,} events")
+
+
 def build_next_chains():
     """Per-position chronological :NEXT chain over all its events
     (fraud-event-sequence model, timeDelta in days)."""
@@ -1205,13 +1337,16 @@ def main():
     print(f"TP_CLOCK_OFFSET_YEARS = {TP_CLOCK_OFFSET_YEARS}")
     load_obligations()
     print("Layer 1: market (OSBAP + FITRS + FRED) ...")
-    chartable, proxy_ctx = build_market_layer()
+    chartable, proxy_ctx, emit_price_series = build_market_layer()
     print(f"  instruments: {sum(1 for n in G.nodes.values() if 'Instrument' in n['labels'])}, "
           f"chartable: {len(chartable)}")
 
     print("Layer 2: governance ...")
     build_governance_static()
     positions = build_positions(chartable, proxy_ctx)
+    # held positions get the full daily TRACE series; the rest stay month-end
+    emit_price_series({p["cusip"] for p in positions if p.get("cusip")})
+    print(f"  market prices: {sum(1 for n in G.nodes.values() if 'MarketPrice' in n['labels']):,}")
     monthly_div: dict[str, list[tuple[date, int]]] = {}
     for r in G.rels:
         if r["type"] == "COMPARED_WITH" and "divergenceBps" in r["props"]:
@@ -1230,6 +1365,7 @@ def main():
     fp = next(p for p in positions if p["id"] == "POS-FP")
     build_fp_case(proxy_ctx, fp)
 
+    annotate_event_prices()
     build_next_chains()
     holdout = remove_holdout()
     emit_outputs(holdout)

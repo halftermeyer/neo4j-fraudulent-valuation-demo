@@ -591,3 +591,32 @@ button.glossary-term:focus-visible {
   cursor: pointer;
   margin-left: 6px;
 }
+
+/* companion focus: flash the table/timeline row a cited node id lives in */
+@keyframes node-focus-flash {
+  0% { background: #ffe8a3; }
+  70% { background: #fff3cd; }
+  100% { background: transparent; }
+}
+.node-focus-flash { animation: node-focus-flash 2.6s ease-out; }
+
+/* schema peek (Explore layer cards) */
+.schema-peek { position: relative; display: inline-block; }
+.schema-peek-btn {
+  background: none; border: 1px solid #c6d4e8; border-radius: 6px;
+  cursor: pointer; font-size: 0.85rem; padding: 1px 7px; line-height: 1.4;
+}
+.schema-peek-btn:hover { background: #eef3fa; }
+.schema-peek-pop {
+  position: absolute; z-index: 60; top: 26px; left: 0;
+  width: 560px; max-width: 74vw; max-height: 560px; overflow: auto;
+  background: #fff; border: 1px solid #c6d4e8; border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(11, 41, 125, 0.18); padding: 10px 12px;
+  font-weight: 400; text-align: left;
+}
+.schema-peek-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.82rem; margin-bottom: 6px;
+}
+.schema-peek-sample { font-size: 0.72rem; }
+.schema-peek-sample td, .schema-peek-sample th { padding: 3px 6px; }

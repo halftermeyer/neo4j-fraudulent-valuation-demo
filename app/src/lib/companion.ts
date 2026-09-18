@@ -13,6 +13,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { executeTool, TOOL_DECLARATIONS } from "./assistantTools";
+import { focusNodeMention } from "./focus";
 import { getQueryLog, pushLogEntry } from "./neo4j";
 import { listObligations, type Obligation } from "./queries";
 
@@ -255,6 +256,8 @@ export async function requestExplain(payload: ExplainPayload): Promise<void> {
     entry.error = (e as Error).message;
     logToAudit("explain", payload, [], lang, Math.round(performance.now() - start), undefined, entry.error);
   }
+  // focus the first node id the explanation cites (graph or table) BEFORE the text shows
+  if (entry.text) focusNodeMention(entry.text);
   state.entries = [...state.entries, entry];
   state.busy = false;
   notify();
@@ -357,6 +360,7 @@ export async function askAboutThis(question: string, extraContext?: string): Pro
     logToAudit(`ask "${question.slice(0, 60)}"`, payload, [], lang,
       Math.round(performance.now() - start), undefined, entry.error);
   }
+  if (entry.text) focusNodeMention(entry.text);
   state.entries = [...state.entries, entry];
   state.busy = false;
   notify();

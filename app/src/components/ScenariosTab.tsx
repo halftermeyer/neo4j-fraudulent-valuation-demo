@@ -1,10 +1,12 @@
-// Scenarios tab — the four sales arguments (S1 Conjunction, S2 Chronology,
-// S3 Abstraction, S4 Read-across) + the Policy panel. Each scenario opens with
+// Scenarios tab — the flow is Policy first (formalise the control framework,
+// compute the gaps), then the four sales arguments (S1 Conjunction, S2
+// Chronology, S3 Abstraction, S4 Read-across). S1 stays locked until gaps have
+// been computed once this session (lib/gapSession). Each scenario opens with
 // the business problem, then runs the real query/algorithm live on click.
 // S4 row-click jumps to S2 preloaded with that position (the false-positive
 // click-through is the point: its controls did happen; a human closes it).
 
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   expectedControls,
   timeline,
@@ -34,23 +36,45 @@ import {
   type RequireCandidate,
 } from "../lib/scenarioQueries";
 import { captureCypher } from "../lib/companion";
+import { gapsComputedThisSession, onGapSessionChange } from "../lib/gapSession";
+import type { TlControl } from "../lib/timelineQuery";
 import { ExplainButton } from "./CompanionPanel";
 import GraphView, { GREY, TYPE_COLORS, type GNode, type GRel } from "./GraphView";
 import PolicyPanel from "./PolicyPanel";
+import PositionTimeline, { RuleScoreBars } from "./PositionTimeline";
 import GlossaryText from "./Term";
 import "./scenarios.css";
 
 type SubTab = "s1" | "s2" | "s3" | "s4" | "policy";
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
+  { id: "policy", label: "Policy · Control framework" },
   { id: "s1", label: "S1 · Conjunction" },
   { id: "s2", label: "S2 · Chronology" },
   { id: "s3", label: "S3 · Abstraction" },
   { id: "s4", label: "S4 · Read-across" },
-  { id: "policy", label: "Policy panel" },
 ];
 
 const fmtDate = (s: string | null | undefined) => (s ? String(s).slice(0, 10) : "—");
+
+/** Routine (governance-layer) events have no description — surface their salient
+ *  properties instead so the chronology never shows bare titles and dates. */
+function eventDetail(e: TimelineEvent): string | null {
+  const p = e.props;
+  const bits: string[] = [];
+  if (typeof p.divergenceBps === "number") bits.push(`divergence ${p.divergenceBps} bps`);
+  if (typeof p.deviationBps === "number")
+    bits.push(`deviation ${p.deviationBps} bps${p.side ? ` (${String(p.side)})` : ""}`);
+  if (typeof p.unexplainedPct === "number")
+    bits.push(
+      `unexplained ${(p.unexplainedPct * 100).toFixed(1)}%` +
+        (typeof p.consecutiveDays === "number" ? ` over ${p.consecutiveDays}d` : ""),
+    );
+  if (p.kind) bits.push(String(p.kind));
+  if (p.type) bits.push(String(p.type));
+  if (p.outcome) bits.push(String(p.outcome));
+  return bits.length > 0 ? bits.join(" · ") : null;
+}
 
 function neighborhoodToGraph(
   nb: Neighborhood,
@@ -85,6 +109,10 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   const [community, setCommunity] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  // a conjunction opens on the FINANCIAL timeline (SME review batch 2);
+  // the network is one explicit toggle away
+  const [showGraph, setShowGraph] = useState(false);
+  const [tlControls, setTlControls] = useState<TlControl[]>([]);
 
   const run = async () => {
     setBusy(true);
@@ -92,19 +120,27 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
       const { result: r, cypher } = await captureCypher(() => runConjunction());
       setRunCypher(cypher);
       setRows(r);
-      const first = r[0]?.positionId ?? null;
-      setSelected(first);
-      if (first) setNb(await positionNeighborhood(first));
+      setSelected(r[0]?.positionId ?? null);
+      setShowGraph(false);
+      setNb(null);
       setCommunity(null);
     } finally {
       setBusy(false);
     }
   };
 
-  const select = async (id: string) => {
+  const select = (id: string) => {
     setSelected(id);
-    setNb(await positionNeighborhood(id));
+    setShowGraph(false);
+    setNb(null);
     setCommunity(null);
+    setTlControls([]);
+  };
+
+  const toggleGraph = async () => {
+    const next = !showGraph;
+    setShowGraph(next);
+    if (next && selected && !nb) setNb(await positionNeighborhood(selected));
   };
 
   const detect = async () => {
@@ -142,7 +178,13 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
         <button className="demo-btn" data-testid="s1-run" disabled={busy} onClick={run}>
           Run the conjunction query
         </button>
-        <button className="demo-btn secondary" data-testid="s1-louvain" disabled={busy || !selected} onClick={detect}>
+        <button
+          className="demo-btn secondary"
+          data-testid="s1-louvain"
+          disabled={busy || !selected || !showGraph}
+          onClick={detect}
+          title={showGraph ? undefined : "Show the graph first — Louvain colours the network view"}
+        >
           GDS · Louvain communities
         </button>
         {note && <span className="hint">{note}</span>}
@@ -184,6 +226,7 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
                 {rows.slice(0, 12).map((r) => (
                   <tr
                     className={`clickable ${r.positionId === selected ? "row-selected" : ""}`}
+                    data-node-id={r.positionId}
                     key={r.positionId}
                     onClick={() => select(r.positionId)}
                   >
@@ -214,11 +257,38 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
               </div>
             )}
           </div>
-          {graph && (
+          {selected && (
             <div className="panel s1-graph">
-              <h2>{selected} — the shape of the conjunction</h2>
-              <GraphView height={520} nodes={graph.nodes} onNodeClick={() => {}} rels={graph.rels} />
-              <Legend />
+              <h2>{selected} — price, controls and gaps in time</h2>
+              <PositionTimeline
+                key={selected}
+                onData={(d) => setTlControls(d.controls)}
+                positionId={selected}
+              />
+              {tlControls.length > 0 && (
+                <>
+                  <h3 className="s1-rsb-title">Rule scores</h3>
+                  <RuleScoreBars controls={tlControls} />
+                </>
+              )}
+              <div className="btn-row">
+                <button
+                  className="demo-btn secondary"
+                  data-testid="s1-show-graph"
+                  onClick={() => void toggleGraph()}
+                >
+                  {showGraph ? "Hide graph" : "Show graph"}
+                </button>
+                <span className="hint">
+                  The timeline is the investigator's first view; the network is one click away.
+                </span>
+              </div>
+              {showGraph && graph && (
+                <>
+                  <GraphView height={480} nodes={graph.nodes} onNodeClick={() => {}} rels={graph.rels} />
+                  <Legend />
+                </>
+              )}
             </div>
           )}
         </div>
@@ -259,6 +329,7 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
   const [asOf, setAsOf] = useState("2023-01-01");
   const [busy, setBusy] = useState(false);
   const [runCypher, setRunCypher] = useState("");
+  const [runPos, setRunPos] = useState(""); // the position of the LAST run — pins the financial timeline
 
   const run = useCallback(async () => {
     setBusy(true);
@@ -272,6 +343,7 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
       setChain(result.ch);
       setControls(result.ctl);
       setRunCypher(cypher);
+      setRunPos(positionId);
     } finally {
       setBusy(false);
     }
@@ -316,13 +388,19 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
           early detection, not autopsy.
         </span>
       </div>
+      {events.length > 0 && runPos && (
+        <div className="panel">
+          <h2>{runPos} — price, controls and gaps in time</h2>
+          <PositionTimeline height={320} key={runPos} positionId={runPos} />
+        </div>
+      )}
       {events.length > 0 && (
         <div className="s2-layout">
           <div className="panel s2-timeline">
             <h2>Chronology — {positionId}</h2>
             <div className="timeline">
               {events.map((e) => (
-                <div className={`tl-item tl-${e.label.toLowerCase()}`} key={e.id}>
+                <div className={`tl-item tl-${e.label.toLowerCase()}`} data-node-id={e.id} key={e.id}>
                   <span className="tl-dot" style={{ background: TYPE_COLORS[e.label] ?? "#888" }} />
                   <div className="tl-body">
                     <div className="tl-head">
@@ -335,7 +413,11 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
                         <span className="pill pill-info">{String(e.props.amountUsdM)} m$</span>
                       )}
                     </div>
-                    {e.description && <div className="tl-desc">{e.description}</div>}
+                    {e.description ? (
+                      <div className="tl-desc">{e.description}</div>
+                    ) : (
+                      eventDetail(e) && <div className="tl-desc tl-detail">{eventDetail(e)}</div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -375,7 +457,11 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
                 </thead>
                 <tbody>
                   {controls.map((c, i) => (
-                    <tr className={c.status === "MET" ? "" : "row-gap"} key={i}>
+                    <tr
+                      className={c.status === "MET" ? "" : "row-gap"}
+                      data-node-id={c.observedEventId ?? c.triggerEventId ?? undefined}
+                      key={i}
+                    >
                       <td>
                         <strong>{c.ruleId}</strong> {c.ruleName}
                       </td>
@@ -423,7 +509,7 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
                   </thead>
                   <tbody>
                     {chain.slice(0, 8).map((c, i) => (
-                      <tr key={i}>
+                      <tr data-node-id={c.fromId} key={i}>
                         <td>{c.fromId}</td>
                         <td>{c.toId}</td>
                         <td>{c.hops}</td>
@@ -550,6 +636,7 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   const [pred, setPred] = useState<PredictedLink[] | null>(null);
   const [holdout, setHoldout] = useState<HoldoutLink[]>([]);
   const [busy, setBusy] = useState(false);
+  const [timelineFor, setTimelineFor] = useState<string | null>(null);
 
   const refreshPattern = async () => {
     const p = await getPattern();
@@ -694,10 +781,11 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
             </thead>
             <tbody>
               {rows.slice(0, 15).map((r) => (
+                <Fragment key={r.positionId}>
                 <tr
                   className="clickable"
+                  data-node-id={r.positionId}
                   data-testid={`s4-row-${r.positionId}`}
-                  key={r.positionId}
                   onClick={() => onOpenChronology(r.positionId)}
                 >
                   <td>
@@ -734,9 +822,28 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
                       })}
                       small
                     />
+                    <button
+                      className="demo-btn secondary s4-tl-btn"
+                      data-testid={`s4-timeline-${r.positionId}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTimelineFor(timelineFor === r.positionId ? null : r.positionId);
+                      }}
+                      title="Financial timeline of this match"
+                    >
+                      {timelineFor === r.positionId ? "hide timeline" : "📈 timeline"}
+                    </button>
                     <span className="hint-inline"> chronology →</span>
                   </td>
                 </tr>
+                {timelineFor === r.positionId && (
+                  <tr className="s4-tl-row">
+                    <td colSpan={6}>
+                      <PositionTimeline height={300} positionId={r.positionId} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -799,9 +906,13 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
 // ───────────────────────────── tab shell ─────────────────────────────
 
 export default function ScenariosTab() {
-  const [sub, setSub] = useState<SubTab>("s1");
+  const [sub, setSub] = useState<SubTab>("policy");
   const [s2Position, setS2Position] = useState("POS-TP");
   const [policyEpoch, setPolicyEpoch] = useState(0);
+
+  // S1 unlocks after the visible "Compute governance gaps" step (session-only)
+  const [gapsReady, setGapsReady] = useState(gapsComputedThisSession());
+  useEffect(() => onGapSessionChange(() => setGapsReady(gapsComputedThisSession())), []);
 
   const openChronology = (positionId: string) => {
     setS2Position(positionId);
@@ -811,16 +922,22 @@ export default function ScenariosTab() {
   return (
     <div className="scenarios-container">
       <div className="sub-nav">
-        {SUB_TABS.map((t) => (
-          <button
-            className={`sub-tab ${sub === t.id ? "active" : ""}`}
-            data-testid={`subtab-${t.id}`}
-            key={t.id}
-            onClick={() => setSub(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
+        {SUB_TABS.map((t) => {
+          const locked = t.id === "s1" && !gapsReady;
+          return (
+            <button
+              className={`sub-tab ${sub === t.id ? "active" : ""} ${locked ? "locked" : ""}`}
+              data-testid={`subtab-${t.id}`}
+              disabled={locked}
+              key={t.id}
+              onClick={() => setSub(t.id)}
+              title={locked ? "Compute governance gaps in the Policy step first" : undefined}
+            >
+              {locked ? "🔒 " : ""}
+              {t.label}
+            </button>
+          );
+        })}
       </div>
       {/* key={policyEpoch} clears stale results after a policy change: rerun to see the new answers */}
       <div key={policyEpoch}>

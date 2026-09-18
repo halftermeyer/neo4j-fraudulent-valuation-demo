@@ -1,0 +1,56 @@
+/* PositionTimeline (lightweight-charts) */
+
+.position-timeline { position: relative; }
+.tlx-holder { position: relative; }
+
+/* dashed vertical lines at gap due dates (DOM overlay above the canvas) */
+.tlx-gaplayer {
+  position: absolute; inset: 0; pointer-events: none; z-index: 3;
+}
+.tlx-gapline {
+  position: absolute; top: 0; bottom: 78px; width: 0;
+  border-left: 2px dashed #e0313180; display: none;
+}
+.tlx-gapline span {
+  position: absolute; top: 2px; left: 2px; font-size: 0.62rem; font-weight: 700;
+  color: #e03131; background: #fff8; border-radius: 3px; padding: 0 3px;
+}
+
+/* marker popover — offset off the marker row, closes on click-away */
+.tlx-popover {
+  position: absolute; z-index: 40; width: 320px; max-width: 90%;
+  background: #fff; border: 1px solid #c6d4e8; border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(11, 41, 125, 0.2); padding: 10px 12px;
+  font-size: 0.78rem;
+}
+.tlx-pop-event + .tlx-pop-event { border-top: 1px solid #eef1f6; margin-top: 8px; padding-top: 8px; }
+.tlx-pop-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tlx-pop-date { color: #5a6b85; margin-left: auto; }
+.tlx-pop-row { margin-top: 4px; color: #44546e; }
+.tlx-pop-rules { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
+.tlx-pop-open { margin-top: 8px; font-size: 0.72rem; padding: 3px 10px; }
+
+/* legend */
+.tlx-legend {
+  display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px;
+  font-size: 0.7rem; color: #5a6b85; align-items: center;
+}
+.tlx-swatch { display: inline-block; width: 14px; height: 8px; border-radius: 2px; vertical-align: middle; }
+.tlx-swatch.tlx-line { height: 3px; }
+.tlx-swatch.tlx-dashed { height: 0; width: 14px; border-top: 2px dashed #e03131; }
+.tlx-mark { display: inline-block; width: 9px; height: 9px; vertical-align: middle; }
+.tlx-circle { border-radius: 50%; }
+.tlx-square { border-radius: 1px; }
+.tlx-arrowUp { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.tlx-arrowDown { clip-path: polygon(0 0, 100% 0, 50% 100%); }
+
+/* per-rule LATE/MISSED bars (the "rule scores" companion chart) */
+.rule-score-bars { display: flex; flex-direction: column; gap: 3px; }
+.rsb-row { display: flex; align-items: center; gap: 8px; }
+.rsb-label { width: 26px; font-size: 0.72rem; font-weight: 700; color: #0b297d; }
+.rsb-track { flex: 1; display: flex; height: 12px; background: #eef1f6; border-radius: 3px; overflow: hidden; }
+.rsb-missed { background: #e03131; height: 100%; }
+.rsb-late { background: #f59f00; height: 100%; }
+.rsb-count { width: 20px; font-size: 0.72rem; color: #44546e; }
+.rsb-legend { display: flex; gap: 12px; font-size: 0.68rem; color: #5a6b85; margin-top: 4px; align-items: center; }
+.rsb-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: middle; margin-right: 3px; }

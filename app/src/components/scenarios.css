@@ -110,3 +110,30 @@
   font-size: 0.8rem;
 }
 .policy-note { font-size: 0.78rem; color: #0f6c37; }
+
+/* locked sub-tab (S1 before the gaps are computed) */
+.sub-tab.locked { opacity: 0.5; cursor: not-allowed; }
+
+/* rule provenance (Source column) */
+.policy-card-source { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.policy-source {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; padding: 0; cursor: pointer;
+}
+.policy-source-tag {
+  font-size: 0.68rem; font-weight: 700; color: #0b297d;
+  border: 1px dashed #9db4d0; border-radius: 10px; padding: 1px 7px;
+}
+.policy-source-tip { font-size: 0.78rem; max-width: 420px; display: inline-block; }
+
+/* the visible "Compute governance gaps" step */
+.policy-compute { margin-top: 18px; border-top: 1px solid #dde3ec; padding-top: 12px; }
+.policy-compute .data-table { max-width: 720px; }
+
+/* salient-props line for routine (description-less) events in the chronology */
+.tl-detail { font-style: italic; color: #7a8aa3; }
+
+/* PositionTimeline in the scenarios */
+.s1-rsb-title { font-size: 0.82rem; margin: 10px 0 4px; color: #0b297d; }
+.s4-tl-btn { font-size: 0.68rem; padding: 2px 8px; margin-left: 6px; }
+.s4-tl-row td { background: #fbfcfe; }

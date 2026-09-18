@@ -4,10 +4,12 @@
 // (which it is instructed never to echo).
 //
 // Answers render as sanitised markdown (react-markdown, no raw HTML); each
-// answer carries its tool results as a graph/table toggle — the same NVL
-// component and colours as the scenarios, timelines pinned left-to-right in
-// event time — and a persistent row of suggestion chips whose clicked entry
-// is replaced by a contextual follow-up (all answerable by the typed tools).
+// answer carries its tool results as a timeline/graph/table toggle — the
+// financial PositionTimeline is the DEFAULT when the question investigated one
+// position chronologically, the same NVL subgraph (event-time pinned) and the
+// tables one toggle away — and a persistent row of suggestion chips whose
+// clicked entry is replaced by a contextual follow-up (all answerable by the
+// typed tools).
 
 import { GoogleGenAI, type Content } from "@google/genai";
 import { useRef, useState } from "react";
@@ -21,6 +23,7 @@ import {
 } from "../lib/assistantTools";
 import { getQueryLog } from "../lib/neo4j";
 import GraphView, { type GNode, type GRel } from "./GraphView";
+import PositionTimeline from "./PositionTimeline";
 import ResultGrid from "./ResultGrid";
 import GlossaryText from "./Term";
 import "./chat.css";
@@ -81,7 +84,30 @@ function trailFromLog(startIdx: number): string {
     .join("\n\n");
 }
 
-// ── answer visualisation: graph / table toggle ───────────────────────────────
+// ── answer visualisation: timeline / graph / table toggle ────────────────────
+
+// tools whose use signals a chronological / price question — the financial
+// timeline is then the DEFAULT answer view (same "timeline first" philosophy
+// as S1); the subgraph and the tables stay one toggle away
+const TIMELINE_TOOLS = new Set(["timeline", "divergence", "expected_controls"]);
+
+/** The one position this answer investigated, if it is exactly one. */
+function answerPosition(viz: ToolViz[]): { positionId: string | null; asDefault: boolean } {
+  const ids = new Set<string>();
+  let chrono = false;
+  for (const v of viz) {
+    try {
+      const pid = (JSON.parse(v.args) as Record<string, unknown>).positionId;
+      if (typeof pid === "string" && pid) {
+        ids.add(pid);
+        if (TIMELINE_TOOLS.has(v.toolName)) chrono = true;
+      }
+    } catch {
+      // unparseable args — ignore
+    }
+  }
+  return ids.size === 1 ? { positionId: [...ids][0], asDefault: chrono } : { positionId: null, asDefault: false };
+}
 
 function graphToView(viz: ToolViz[]): { nodes: GNode[]; rels: GRel[] } {
   const nodes = new Map<string, GNode>();
@@ -106,13 +132,26 @@ function graphToView(viz: ToolViz[]): { nodes: GNode[]; rels: GRel[] } {
 }
 
 function AnswerViz({ viz }: { viz: ToolViz[] }) {
-  const [mode, setMode] = useState<"graph" | "table">("graph");
+  const { positionId, asDefault } = answerPosition(viz);
+  const [mode, setMode] = useState<"timeline" | "graph" | "table">(
+    positionId && asDefault ? "timeline" : "graph",
+  );
   const graph = graphToView(viz);
   const hasGraph = graph.nodes.length > 0;
-  const effective = hasGraph ? mode : "table";
+  const effective =
+    mode === "timeline" && positionId ? "timeline" : mode === "graph" && hasGraph ? "graph" : mode === "graph" ? "table" : mode;
   return (
     <div className="answer-viz">
       <div className="answer-viz-toggle">
+        {positionId && (
+          <button
+            className={effective === "timeline" ? "active" : ""}
+            data-testid="answer-viz-timeline"
+            onClick={() => setMode("timeline")}
+          >
+            📈 timeline
+          </button>
+        )}
         {hasGraph && (
           <button className={effective === "graph" ? "active" : ""} onClick={() => setMode("graph")}>
             graph
@@ -126,7 +165,10 @@ function AnswerViz({ viz }: { viz: ToolViz[] }) {
           Explore
         </span>
       </div>
-      {effective === "graph" ? (
+      {effective === "timeline" && positionId ? (
+        // the same one-query financial view as S1/S2/S4 — the model never sees it
+        <PositionTimeline height={300} positionId={positionId} />
+      ) : effective === "graph" ? (
         // click = inspect in place; the inspector's "Open in Explore →" jumps tabs
         <GraphView height={320} nodes={graph.nodes} rels={graph.rels} />
       ) : (

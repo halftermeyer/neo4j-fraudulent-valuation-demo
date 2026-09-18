@@ -27,9 +27,13 @@ cd app && npm install && npm run dev    # http://localhost:5173
 check the terminal line before opening the browser tab you'll present from.)
 
 `inputs/.env` holds the Neo4j credentials and the Gemini key (`make env` derives
-`.env` and `app/.env`). Set Policy-panel parameters **before** the demo if the
-customer sent their own thresholds; the panel exists so you can change them live
-when asked.
+`.env` and `app/.env`). The **flow is Explore → Policy → S1 → S2 → S3 → S4**: the
+Policy step is where the bank's control framework is formalised and the gaps are
+computed — **S1 stays locked until "Compute governance gaps" has run once** in the
+session. Every threshold is an indicative placeholder (per-rule provenance with
+verified public-source quotes: `docs/rules-provenance.md`); load the customer's own
+values before the demo if they sent them — the panel exists so you can change them
+live when asked.
 
 Run `make explain` after `make data` (and again after changing Policy defaults —
 the cache key includes the active parameters): it pre-generates the AI-companion
@@ -52,8 +56,8 @@ anything else. Open the Cypher drawer and expand a companion entry's
 Start from an **empty database** (Explore → Reset database): the ingest is part of
 the show.
 
-Timing: Act 0 ≈ 5 min · Act 1 ≈ 4 min · Act 2 ≈ 6 min · Act 3 ≈ 3 min · Act 4 ≈ 5 min ·
-Assistant ≈ 2 min. Keep the Cypher audit drawer closed until the first time someone
+Timing: Act 0 ≈ 5 min · Policy ≈ 2 min · Act 1 ≈ 4 min · Act 2 ≈ 6 min · Act 3 ≈ 3 min ·
+Act 4 ≈ 5 min · Assistant ≈ 2 min. Keep the Cypher audit drawer closed until the first time someone
 asks "what did it just run?" — then never close it again.
 
 ---
@@ -111,6 +115,28 @@ neighbourhood — toggle **FR** if the room prefers French. Point at the
 
 ---
 
+## Policy — the bank's control framework, formalised
+
+> **Tab: Scenarios → Policy · Control framework** (the second step of the flow)
+
+Walk the nine rules. Say the honesty sentence verbatim: **"Formalisation of the
+bank's own control framework. Default values are indicative placeholders, to be
+replaced by the institution's thresholds."** Hover a **Source** label: each rule
+carries the public source it *echoes* — a regulatory requirement (CRR Art. 105),
+supervisory guidance (SR 11-7) or a public case finding (Senate PSI, SEC) — with
+the verbatim quote and link; "regulation-informed" appears only where the status
+warrants it. Never claim a threshold is regulation-derived; the full provenance
+table is `docs/rules-provenance.md`.
+
+Then the visible step: click **Compute governance gaps**. One parameterised query
+evaluates all nine rules over every position, expected vs observed, and
+materialises the gaps — the counts per rule (MET / LATE / MISSED) appear, and S1
+unlocks. *Talking point:* "The rules you just saw are data, not code. This button
+is the whole detection engine — everything after this screen only reads what it
+computed."
+
+---
+
 ## Act 1 — S1 Conjunction: below threshold alone, a shape together
 
 > **Tab: Scenarios → S1**
@@ -120,12 +146,24 @@ own column — IPV sees divergence, Product Control sees unexplained P&L, MAP se
 review calendars. Each is below its threshold. Nobody sees the row.
 
 Run the conjunction query live. POS-TP ranks first; note which *other* positions
-score high (the sloppy desks). Then run community detection: the community around
-POS-TP lights up, the rest of the graph greys out.
+score high (the sloppy desks). Clicking a row now opens **the financial timeline
+first** — the investigator's native language: observed prices as candles (real
+OHLC when several trades printed) or ticks, gaps left as gaps; the model price as
+a continuous line — *the distance between line and candles is the divergence*;
+one marker per governance event; dashed vertical lines where a control came due
+and never fired; the cumulative broken-control score below; per-rule score bars
+alongside. Click a marker: date, role, trader mark / model price / IPV price
+(written on the event by the generator, never recomputed client-side), the rules
+it concerns, and "Open in graph".
 
-*Talking point:* "This is not an anomaly score on a column. It's a count of
-connected weak signals around one position. The community colouring is the same
-idea topologically: the pattern IS the neighbourhood."
+Then click **Show graph** — the network is one click away, not the opening shot —
+and run community detection: the community around POS-TP lights up, the rest
+greys out.
+
+*Talking point:* "This is not an anomaly score on a column. The chart is what your
+first line already reads — price against model. The graph behind it is what they
+don't have: the count of connected weak signals around one position. The community
+colouring is the same idea topologically: the pattern IS the neighbourhood."
 
 **✦ Explain beat:** click **✦ Explain** on the ranking card. The companion
 restates, from the rows alone, why the top position's mix of signals is
@@ -149,7 +187,16 @@ is not a score, it's a reusable pattern."
 **The business problem:** post-incident forensics take weeks and produce a PDF.
 Supervisors now ask for the chronology *and* the control-expectation gap on demand.
 
-Walk the timeline of POS-TP top to bottom — it reads like the public record because
+Reconstruct POS-TP. The **financial timeline** opens above the chronology — the
+same component as S1, so the room has already learnt to read it: marks flat while
+the model price falls, the override markers clustering exactly where the dashed
+missed-control lines stand. Click one override marker: the popover shows the
+trader mark, the model price and the IPV price *carried by the event node itself*,
+its divergence, the rules it concerns with their status — and "Open in graph"
+opens the node in the Explore graph (or selects it in place when an NVL view is
+already on screen), flashing its chronology row on the way.
+
+Then walk the event timeline of POS-TP top to bottom — it reads like the public record because
 it is the public record: the VaR model change, the informal switch away from
 midpoints, the override series with a desk-head sign-off, the spreadsheet that
 quantified the gap and went nowhere, the quarter-end IPV that *upheld* the marks,
@@ -213,6 +260,10 @@ Run the pattern against all ~100 positions. Read the screen:
 - **Exact matches** at 1.0 — the confirmed case matches itself (sanity check, say so).
 - **Partial matches ranked** — "score = satisfied requirements / total. 5/7 today is
   a case file *before* the loss, not after. That is the early-detection story."
+- **📈 timeline on any match row** — expand the financial timeline in place: for a
+  true near-miss you see the price story forming; for the false positive you see
+  prices tracking the model and only three dashed lines (R2, R4, R6 — all
+  process-lateness, no price story). The chart is the fastest exoneration.
 - **✦ Explain beat:** click the small **✦ Explain** on the POS-FP match row
   *before* jumping to its chronology: the companion reads the score from the
   satisfied/missing lists — which conditions matched, which did not — and says
@@ -372,6 +423,15 @@ narration: The third layer holds two cases. A confirmed public mismarking case
 ```
 
 ```scene
+id: schema-peek
+action: Click the eye on the governance layer card; popover with the layer mini-schema + 5 live sample rows.
+narration: Every layer card carries an eye. One click opens a live peek at what
+  was just loaded: the labels, how they relate, and five real rows sampled
+  straight from the graph — the same audited query path as everything else. This
+  is the map an analyst gets before any scenario runs.
+```
+
+```scene
 id: explore-position
 action: Select POS-TP; steps 1, 2, 3 — position, structure, price vs proxy chart.
 narration: We start from one position, never from the full graph. One click adds
@@ -390,31 +450,53 @@ narration: Now we add the signals one family at a time. P and L signals, price
 ```
 
 ```scene
+id: policy-framework
+action: Scenarios → Policy; the nine rules with editable placeholders and Source labels.
+narration: Before any detection, the policy. These nine rules formalise the bank's
+  own control framework — every threshold an indicative placeholder, to be replaced
+  by the institution's values. Each rule carries its provenance: the public
+  requirement, guidance or case finding it echoes, quoted and linked. Never a claim
+  that a number came from regulation.
+```
+
+```scene
+id: policy-compute
+action: Click Compute governance gaps; per-rule MET/LATE/MISSED counts appear; S1 unlocks.
+narration: This button is the detection engine. One parameterised query evaluates
+  all nine obligations over every position, expected versus observed, reading the
+  thresholds live off the policy nodes — and materialises the gaps. Met, late,
+  missed, counted per rule. Everything after this screen only reads what it just
+  computed.
+```
+
+```scene
 id: s1-conjunction
-action: Scenarios → S1 → Run the conjunction query.
-narration: Scenario one asks a simple question: where do weak signals cluster?
-  Each control function sees one column and none of them alerts. This one query
-  counts what co-occurs around every position, and the confirmed case tops the
-  ranking by a factor of six — not because of any single alarm, but because of
-  the conjunction.
+action: Scenarios → S1 → Run the conjunction query; the top position's FINANCIAL timeline opens first.
+narration: Scenario one asks where weak signals cluster, and the confirmed case
+  tops the ranking by a factor of six. What opens first is the investigator's
+  native language: the price. Trader marks hold firm while the model price falls
+  away — that distance is the divergence — and every dashed line is a control that
+  came due and never fired.
 ```
 
 ```scene
 id: s1-community
-action: Run GDS Louvain; the selected position's community is coloured, the rest greyed.
-narration: Community detection makes the same point topologically. The coloured
-  cluster is the neighbourhood of the suspect position; everything grey is the
-  rest of the book. The pattern is not a score on a column — the pattern is the
-  neighbourhood itself.
+action: Click Show graph, then run GDS Louvain; the position's community coloured, the rest greyed.
+narration: The network is one click away, never the opening shot. And community
+  detection makes the same point topologically: the coloured cluster is the
+  neighbourhood of the suspect position, everything grey is the rest of the book.
+  The pattern is not a score on a column — the pattern is the neighbourhood
+  itself.
 ```
 
 ```scene
 id: s2-chronology
-action: S2 → Reconstruct POS-TP; the timeline renders with authentic-date badges.
-narration: Scenario two reconstructs the case in event time. A risk-model change,
-  an informal switch away from midpoints, a weekly series of favourable overrides
-  signed off by the desk head, the spreadsheet that quantified the gap and went
-  nowhere. Each event keeps its authentic date from the public record.
+action: S2 → Reconstruct POS-TP; financial timeline above the chronology with authentic-date badges.
+narration: Scenario two reconstructs the case in event time, under the same price
+  timeline. A risk-model change, an informal switch away from midpoints, a weekly
+  series of favourable overrides signed off by the desk head, the spreadsheet that
+  quantified the gap and went nowhere. Each event keeps its authentic date from
+  the public record.
 ```
 
 ```scene
@@ -488,8 +570,9 @@ id: assistant-question
 action: Assistant tab → ask "Reconstruct what happened to POS-TP…" via the first chip.
 narration: The assistant answers the same investigation in natural language. It
   composes typed tools over the same audited query functions — it is not free-form
-  text-to-Cypher. The answer arrives with the chronology, the controls that should
-  have fired, and the returned subgraph rendered in event-time order.
+  text-to-Cypher. And because the question is about one position, the answer opens
+  on its financial timeline — the subgraph in event-time order and the raw tables
+  are one toggle away.
 ```
 
 ```scene

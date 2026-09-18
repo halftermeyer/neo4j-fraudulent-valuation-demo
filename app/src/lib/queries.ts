@@ -12,7 +12,7 @@ import { runQuery, withGroup } from "./neo4j";
 export const AS_OF_DEFAULT = "2023-01-01T00:00:00Z"; // dataset clock end
 
 /** JS Dates are not auto-converted by the driver — always send a neo4j DateTime. */
-function neoDateTime(iso: string): DateTime<number> {
+export function neoDateTime(iso: string): DateTime<number> {
   return DateTime.fromStandardDate(new Date(iso));
 }
 
@@ -95,6 +95,39 @@ FOREACH (tt IN CASE WHEN t IS NULL THEN [] ELSE [t] END | MERGE (g)-[:ON_TRIGGER
     "MATCH (g:GovernanceGap {abstract: false}) RETURN count(g) AS c",
   );
   return n[0]?.c ?? 0;
+}
+
+export interface GapRuleSummary {
+  ruleId: string;
+  ruleName: string;
+  MET: number;
+  LATE: number;
+  MISSED: number;
+  PENDING: number;
+}
+
+/** The visible "Compute governance gaps" step of the Policy panel: run the gap
+ *  query live over every position, materialise the gaps with the same text, and
+ *  return per-rule counts by status. */
+export async function computeGaps(
+  asOf: string = AS_OF_DEFAULT,
+): Promise<{ summary: GapRuleSummary[]; gapCount: number }> {
+  return withGroup("Compute governance gaps", async () => {
+    const obligations = await listObligations();
+    const rows = await expectedControls(null, { asOf });
+    const gapCount = await materialiseGaps(asOf);
+    const byRule = new Map<string, GapRuleSummary>(
+      obligations.map((o) => [
+        o.id,
+        { ruleId: o.id, ruleName: o.name, MET: 0, LATE: 0, MISSED: 0, PENDING: 0 },
+      ]),
+    );
+    for (const r of rows) {
+      const s = byRule.get(r.ruleId);
+      if (s) s[r.status] += 1;
+    }
+    return { summary: [...byRule.values()], gapCount };
+  });
 }
 
 // ── ingest flow (UI-triggered, layer by layer — DECISIONS.md #8) ────────────
