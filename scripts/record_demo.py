@@ -128,17 +128,30 @@ class Recorder:
     def scene_ingest_cases(self):
         self.ingest("cases")
 
+    def frame_on(self, locator, block: str = "end", settle_ms: int = 1_200):
+        """Cinematic framing: smooth-scroll what the narration talks about into
+        view. Fails loudly (locator.evaluate raises) if the target is missing."""
+        locator.first.evaluate(
+            "(el, block) => el.scrollIntoView({behavior: 'smooth', block})", block)
+        self.page.wait_for_timeout(settle_ms)
+
     def scene_explore_position(self):
         self.tid("select-position").select_option("POS-TP")
         for step in ("step-1", "step-2", "step-3"):
             self.tid(step).click()
             self.page.wait_for_timeout(1_000)
+        # the narration talks about the node + price chart — bring them on screen
+        self.frame_on(self.page.locator(".graph-canvas"), "end")
         self.page.wait_for_timeout(1_500)
 
     def scene_explore_signals(self):
+        # frame the canvas first: buttons, chart and graph then share the viewport,
+        # so the audience watches the shape form while the clicks happen
+        self.frame_on(self.page.locator(".graph-canvas"), "end")
         for k in ("add-pnl", "add-overrides", "add-changes", "add-ipv", "add-gaps"):
             self.tid(k).click()
             self.page.wait_for_timeout(900)
+        self.frame_on(self.page.locator(".graph-canvas"), "end")
         self.page.wait_for_timeout(2_500)
 
     def scene_s1_conjunction(self):
@@ -146,11 +159,13 @@ class Recorder:
         self.tid("subtab-s1").click()
         self.tid("s1-run").click()
         self.page.get_by_text("Positions ranked").wait_for(timeout=120_000)
+        self.frame_on(self.page.locator(".s1-layout"), "start")
         self.page.wait_for_timeout(2_500)
 
     def scene_s1_community(self):
         self.tid("s1-louvain").click()
         self.page.get_by_text("Louvain found").wait_for(timeout=300_000)
+        self.frame_on(self.page.locator(".graph-canvas"), "center")
         self.page.wait_for_timeout(2_500)
 
     def scene_s2_chronology(self):
@@ -168,20 +183,24 @@ class Recorder:
         self.tid("subtab-s3").click()
         self.tid("s3-run").click()
         self.page.get_by_text("REQUIRES").first.wait_for(timeout=120_000)
+        self.frame_on(self.page.locator(".graph-canvas"), "end")
         self.page.wait_for_timeout(2_500)
 
     def scene_s4_readacross(self):
         self.tid("subtab-s4").click()
         self.tid("s4-run").click()
         self.page.get_by_text("100%").first.wait_for(timeout=120_000)
+        self.frame_on(self.page.get_by_text("Every position vs the pattern"), "start")
         self.page.wait_for_timeout(1_500)
 
     def scene_s4_predict(self):
         self.tid("s4-predict").click()
         self.page.get_by_text("held-out").first.wait_for(timeout=300_000)
+        self.frame_on(self.page.get_by_text("held-out").first, "center")
         self.page.wait_for_timeout(1_500)
 
     def scene_s4_false_positive(self):
+        self.frame_on(self.tid("s4-row-POS-FP"), "center")
         self.tid("s4-row-POS-FP").click()
         self.tid("s2-run").click()
         self.page.get_by_text("MISSED").first.wait_for(timeout=120_000)
@@ -189,6 +208,7 @@ class Recorder:
 
     def scene_policy_change(self):
         self.tid("subtab-policy").click()
+        self.frame_on(self.tid("policy-R5-divergenceBps"), "center")
         field = self.tid("policy-R5-divergenceBps")
         field.fill("100")
         self.tid("policy-apply-R5").click()
