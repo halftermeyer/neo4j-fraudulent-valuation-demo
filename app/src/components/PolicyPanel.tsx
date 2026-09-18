@@ -68,7 +68,12 @@ export default function PolicyPanel({ onChanged }: { onChanged: () => void }) {
         regenerated.
       </p>
       <div className="btn-row">
-        <button className="demo-btn danger" disabled={busy !== null} onClick={reset}>
+        <button
+          className="demo-btn danger"
+          data-testid="policy-reset"
+          disabled={busy !== null}
+          onClick={reset}
+        >
           Reset to CSV defaults
         </button>
         {note && <span className="policy-note">{note}</span>}
@@ -111,6 +116,7 @@ export default function PolicyPanel({ onChanged }: { onChanged: () => void }) {
                   <label key={k}>
                     {k}
                     <input
+                      data-testid={`policy-${o.id}-${k}`}
                       onChange={(e) => setParam(o.id, k, Number(e.target.value))}
                       step={k === "unexplainedThreshold" ? 0.005 : 1}
                       type="number"
@@ -122,6 +128,7 @@ export default function PolicyPanel({ onChanged }: { onChanged: () => void }) {
             </div>
             <button
               className="demo-btn secondary"
+              data-testid={`policy-apply-${o.id}`}
               disabled={busy !== null || !edits[o.id]}
               onClick={() => apply(o)}
             >

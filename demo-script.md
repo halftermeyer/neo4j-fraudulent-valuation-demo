@@ -321,3 +321,182 @@ signals fraud leaves behind; a human establishes intent.**
 - ESMA FITRS non-equity transparency full files (FULNCR…_D_…): quarterly bond
   liquidity assessments (`<Lqdty>`), registers.esma.europa.eu.
 - FRED, U.S. Treasury constant-maturity yields (DGS series), fred.stlouisfed.org.
+
+---
+
+## Video storyboard (make video)
+
+The blocks below are the machine-readable source for `make video`
+(`scripts/record_demo.py` parses them; `scripts/tts.py` narrates them;
+`scripts/assemble_video.py` cuts `dist/demo.mp4`). Each fenced `scene` block has a
+stable `id:` (the recorder maps ids to UI actions — do not rename without updating
+`record_demo.py`), an `action:` line documenting what the recorder does on screen,
+and a `narration:` of 2–4 presenter-voice sentences. English only. Edit narration
+freely; re-run `make video` (audio is cached by text hash).
+
+```scene
+id: intro
+action: Explore tab on an empty database (the recorder resets it first).
+narration: The graph does not detect fraud. It detects the conjunction of weak
+  signals that fraud leaves behind, and a human establishes intent. Over the next
+  few minutes we bootstrap this demo from an empty database and follow one
+  confirmed mismarking case end to end.
+```
+
+```scene
+id: ingest-market
+action: Click Ingest on layer 1 · Market; wait for "Loaded".
+narration: The first layer is real public data. Three thousand illiquid US
+  corporate bonds from the public TRACE panel, ESMA's own liquidity assessments,
+  and Treasury curves for the proxy methodology. Nothing in this layer is
+  invented, and the twenty-twenty-two rate shock is in the data because it
+  happened.
+```
+
+```scene
+id: ingest-governance
+action: Click Ingest on layer 2 · Governance; wait for "Loaded".
+narration: The second layer is synthetic governance, generated from rules. Nine
+  control obligations drive the creation of reviews, approvals and escalations
+  with a compliance rate per desk. The gaps you will see were never hand-placed;
+  the same query the app runs computes them, expected versus observed.
+```
+
+```scene
+id: ingest-cases
+action: Click Ingest on layer 3 · Cases; wait for "Loaded".
+narration: The third layer holds two cases. A confirmed public mismarking case
+  from twenty-twelve, encoded event by event from the public record with its
+  citations, and one deliberate false positive whose controls actually worked.
+  The clock is shifted ten years so everything sits on the same demo timeline.
+```
+
+```scene
+id: explore-position
+action: Select POS-TP; steps 1, 2, 3 — position, structure, price vs proxy chart.
+narration: We start from one position, never from the full graph. One click adds
+  its instrument, desk, owner and valuation methodology. The chart shows trader
+  marks drifting away from dealer midpoints through the first quarter — that gap
+  is the story, and today reconstructing it takes days across five systems.
+```
+
+```scene
+id: explore-signals
+action: Add the five signal families one click at a time.
+narration: Now we add the signals one family at a time. P and L signals, price
+  overrides, methodology changes, IPV reviews, and the computed governance gaps.
+  Watch the shape form. Every single node you see is, on its own, below threshold
+  somewhere.
+```
+
+```scene
+id: s1-conjunction
+action: Scenarios → S1 → Run the conjunction query.
+narration: Scenario one asks a simple question: where do weak signals cluster?
+  Each control function sees one column and none of them alerts. This one query
+  counts what co-occurs around every position, and the confirmed case tops the
+  ranking by a factor of six — not because of any single alarm, but because of
+  the conjunction.
+```
+
+```scene
+id: s1-community
+action: Run GDS Louvain; the selected position's community is coloured, the rest greyed.
+narration: Community detection makes the same point topologically. The coloured
+  cluster is the neighbourhood of the suspect position; everything grey is the
+  rest of the book. The pattern is not a score on a column — the pattern is the
+  neighbourhood itself.
+```
+
+```scene
+id: s2-chronology
+action: S2 → Reconstruct POS-TP; the timeline renders with authentic-date badges.
+narration: Scenario two reconstructs the case in event time. A risk-model change,
+  an informal switch away from midpoints, a weekly series of favourable overrides
+  signed off by the desk head, the spreadsheet that quantified the gap and went
+  nowhere. Each event keeps its authentic date from the public record.
+```
+
+```scene
+id: s2-gaps
+action: Scroll to the expected-vs-observed table.
+narration: Below the timeline, one parameterised query evaluates all nine control
+  obligations. Rule one missed: the marking change had no approval. Rule five
+  missed: the quarter-end review happened and upheld the marks — control executed
+  is not control effective. Rule eight missed: the desk head approved his own
+  desk's overrides.
+```
+
+```scene
+id: s3-pattern
+action: S3 → Abstract the confirmed case into a :Pattern.
+narration: Scenario three abstracts the confirmed case into a pattern. Look at
+  what it contains — and what it does not. No instrument name, no desk, no dates,
+  no people. Only risk attributes and governance-gap classes. It is a template,
+  not a lookup.
+```
+
+```scene
+id: s4-readacross
+action: S4 → Run read-across; every position scored against the pattern.
+narration: Scenario four runs that template against the whole population at once.
+  The confirmed case matches itself at one hundred percent — that is the sanity
+  check. Everything between fifty and one hundred percent is the early-detection
+  story: the same shape forming on other books, before any loss.
+```
+
+```scene
+id: s4-predict
+action: GDS link prediction against the held-out links; recovery stated on screen.
+narration: The predicted links come with their own honesty check. Six real links
+  were removed from the graph at generation time, and the similarity algorithm
+  recovers most of them. That is validation against held-out ground truth, not
+  circular confirmation — and the screen says so explicitly.
+```
+
+```scene
+id: s4-false-positive
+action: Click the POS-FP match row; the app jumps to its S2 chronology.
+narration: This high-scoring match is the deliberate false positive. One click
+  opens its chronology: the methodology change was approved in advance by an
+  independent committee, IPV was done, the P and L was explained. The shape
+  matched, the governance worked, and a human closes the case. The tool does not
+  accuse; it assembles both the signals and the exculpatory evidence.
+```
+
+```scene
+id: policy-change
+action: Policy panel → set R5 divergence threshold to 100 bps → Apply → Reset.
+narration: Every threshold in those rules belongs to the policy, not to the code.
+  Here we raise the IPV divergence threshold to one hundred basis points and
+  recompute the gaps live — no data regeneration, no redeployment. And one click
+  restores the defaults.
+```
+
+```scene
+id: explain-click
+action: Back to S2; click Explain on the expected-vs-observed card; the AI companion answers.
+narration: The AI companion explains what is on screen — and only what is on
+  screen. It receives the rows, the active policy parameters, and the Cypher that
+  produced them; nothing else. If something is not in that context, it says it is
+  not shown rather than guessing. The full payload is auditable in the Cypher
+  drawer.
+```
+
+```scene
+id: assistant-question
+action: Assistant tab → ask "Reconstruct what happened to POS-TP…" via the first chip.
+narration: The assistant answers the same investigation in natural language. It
+  composes typed tools over the same audited query functions — it is not free-form
+  text-to-Cypher. The answer arrives with the chronology, the controls that should
+  have fired, and the returned subgraph rendered in event-time order.
+```
+
+```scene
+id: outro
+action: Hold on the assistant answer's graph view.
+narration: One graph carried the whole story: real market data, rule-generated
+  governance, a confirmed case, read-across to the entire population, and early
+  detection with an audit trail on every claim. The graph detects the conjunction
+  of weak signals fraud leaves behind. A human establishes intent.
+```

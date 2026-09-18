@@ -21,6 +21,9 @@ data/holdout_links.json
 data/explanations.json
 app/public/data/
 
+# video pipeline output (regenerate with `make video`)
+dist/
+
 # misc
 .DS_Store
 *.part

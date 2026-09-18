@@ -146,6 +146,29 @@ demo-script.md              25-minute walkthrough, objections, bibliography
 DATA_PLAN.md / DECISIONS.md validated plan + running decision log
 ```
 
+## Demo video (`make video`)
+
+`make video` produces a narrated walkthrough `dist/demo.mp4` (H.264, 1080p, no
+music): a 3-second title card, the recorded in-app run (reset → three-layer
+ingest → Explore reveal → S1–S4 → false-positive click-through → one live policy
+change → one Explain click → one Assistant question), per-scene narration and
+burned-in subtitles.
+
+- **Storyboard = `demo-script.md`**: the fenced ```` ```scene ```` blocks at the
+  bottom are the single source of truth (stable `id`, human-readable `action`,
+  2–4 sentence `narration`). Edit narration freely and re-run; audio is cached in
+  `dist/audio/` by hash of the text, so only changed scenes are re-synthesized.
+- **Prerequisites**: app dev server running (ports 5173–5176 are probed), the
+  database loaded/reachable, `ffmpeg` on PATH, `GEMINI_API_KEY` in `inputs/.env`
+  (narration uses Gemini TTS; set `TTS_PROVIDER=elevenlabs` + implement the stub
+  in `scripts/tts.py` to swap providers).
+- **Pacing check first**: `make video VIDEO_FLAGS=--no-audio` renders a silent
+  cut with word-count-estimated scene holds — no TTS calls.
+- **After UI changes**: re-run `make video`; the recorder drives the app through
+  `data-testid` hooks and **fails loudly naming the scene whose selector broke**
+  (fix the hook or the scene action in `scripts/record_demo.py`).
+- `dist/` is gitignored — the mp4 is a build artifact, never committed.
+
 ## Tests
 
 ```bash

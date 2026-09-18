@@ -256,8 +256,14 @@ export default function ChatTab() {
 
   const chips = (
     <div className="chat-suggestions">
-      {hints.map((s) => (
-        <button className="chat-chip" disabled={busy} key={s} onClick={() => ask(s)}>
+      {hints.map((s, i) => (
+        <button
+          className="chat-chip"
+          data-testid={`chat-chip-${i}`}
+          disabled={busy}
+          key={s}
+          onClick={() => ask(s)}
+        >
           {s}
         </button>
       ))}
@@ -306,6 +312,7 @@ export default function ChatTab() {
       <div className="chat-input-row">
         <input
           className="chat-input"
+          data-testid="chat-input"
           disabled={busy}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && ask(input)}

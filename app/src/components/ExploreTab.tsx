@@ -344,6 +344,7 @@ export default function ExploreTab() {
               <p>{l.desc}</p>
               <button
                 className="demo-btn"
+                data-testid={`ingest-${l.name}`}
                 disabled={busy !== null || !enabledFlags[l.name] || loadedFlags[l.name]}
                 onClick={() => doIngest(l.name)}
               >
@@ -354,7 +355,12 @@ export default function ExploreTab() {
           <div className="ingest-card">
             <h3>Reset</h3>
             <p>Empty the database. The demo is resettable at any time.</p>
-            <button className="demo-btn danger" disabled={busy !== null} onClick={doReset}>
+            <button
+              className="demo-btn danger"
+              data-testid="reset-db"
+              disabled={busy !== null}
+              onClick={doReset}
+            >
               Reset database
             </button>
           </div>
@@ -381,6 +387,7 @@ export default function ExploreTab() {
           <div className="btn-row">
             <select
               className="pos-select"
+              data-testid="select-position"
               onChange={(e) => {
                 setSelected(e.target.value);
                 setStep(0);
@@ -397,13 +404,13 @@ export default function ExploreTab() {
                 </option>
               ))}
             </select>
-            <button className="demo-btn" disabled={!selected} onClick={startReveal}>
+            <button className="demo-btn" data-testid="step-1" disabled={!selected} onClick={startReveal}>
               1 · Show position
             </button>
-            <button className="demo-btn" disabled={step < 1} onClick={addStructure}>
+            <button className="demo-btn" data-testid="step-2" disabled={step < 1} onClick={addStructure}>
               2 · Add instrument, desk, owner, methodology
             </button>
-            <button className="demo-btn" disabled={step < 2} onClick={addChart}>
+            <button className="demo-btn" data-testid="step-3" disabled={step < 2} onClick={addChart}>
               3 · Add price history vs proxy
             </button>
           </div>
@@ -422,6 +429,7 @@ export default function ExploreTab() {
               {(Object.keys(SIGNAL_META) as SignalKind[]).map((k) => (
                 <button
                   className="demo-btn secondary"
+                  data-testid={`add-${k}`}
                   disabled={added[k] !== undefined}
                   key={k}
                   onClick={() => addSignals(k)}

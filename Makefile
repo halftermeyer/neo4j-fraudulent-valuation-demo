@@ -1,6 +1,6 @@
 # Mismarking demo — replayable end-to-end pipeline (see DATA_PLAN.md)
 
-.PHONY: env download data load test app all clean-data explain
+.PHONY: env download data load test app all clean-data explain video
 
 env:              ## derive root .env and app/.env from inputs/.env
 	python3 scripts/make_env.py
@@ -20,6 +20,12 @@ explain:          ## pre-generate AI-companion explanations for the scripted dem
 	## includes the active ControlObligation parameters; `make data` also wipes
 	## app/public/data where the served copy lives)
 	set -a && . ./.env && set +a && uv run python scripts/pregen_explanations.py
+
+video:            ## record + narrate + assemble dist/demo.mp4 from the demo-script storyboard
+	## prerequisites: app dev server running, DB reachable, ffmpeg, GEMINI_API_KEY
+	## silent pacing cut: make video VIDEO_FLAGS=--no-audio
+	uv run python scripts/record_demo.py $(VIDEO_FLAGS)
+	uv run python scripts/assemble_video.py
 
 test:             ## run the acceptance tests against the loaded database
 	uv run pytest tests/ -v

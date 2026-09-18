@@ -139,10 +139,10 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
         </GlossaryText>
       </div>
       <div className="btn-row">
-        <button className="demo-btn" disabled={busy} onClick={run}>
+        <button className="demo-btn" data-testid="s1-run" disabled={busy} onClick={run}>
           Run the conjunction query
         </button>
-        <button className="demo-btn secondary" disabled={busy || !selected} onClick={detect}>
+        <button className="demo-btn secondary" data-testid="s1-louvain" disabled={busy || !selected} onClick={detect}>
           GDS · Louvain communities
         </button>
         {note && <span className="hint">{note}</span>}
@@ -302,13 +302,13 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
       <div className="btn-row">
         <label className="inline-label">
           Position
-          <input onChange={(e) => setPositionId(e.target.value)} value={positionId} />
+          <input data-testid="s2-position" onChange={(e) => setPositionId(e.target.value)} value={positionId} />
         </label>
         <label className="inline-label">
           As of
           <input onChange={(e) => setAsOf(e.target.value)} type="date" value={asOf} />
         </label>
-        <button className="demo-btn" disabled={busy} onClick={run}>
+        <button className="demo-btn" data-testid="s2-run" disabled={busy} onClick={run}>
           Reconstruct
         </button>
         <span className="hint">
@@ -346,6 +346,7 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
               <div className="card-head">
                 <h2>Expected vs observed (as of {asOf})</h2>
                 <ExplainButton
+                  testId="explain-s2-card"
                   payload={() => ({
                     scene: "s2",
                     selectionId: positionId,
@@ -490,7 +491,7 @@ function S3() {
         </GlossaryText>
       </div>
       <div className="btn-row">
-        <button className="demo-btn" disabled={busy} onClick={run}>
+        <button className="demo-btn" data-testid="s3-run" disabled={busy} onClick={run}>
           Abstract the confirmed case → :Pattern
         </button>
       </div>
@@ -619,10 +620,10 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
         </GlossaryText>
       </div>
       <div className="btn-row">
-        <button className="demo-btn" disabled={busy} onClick={run}>
+        <button className="demo-btn" data-testid="s4-run" disabled={busy} onClick={run}>
           Run read-across
         </button>
-        <button className="demo-btn secondary" disabled={busy || rows.length === 0} onClick={predict}>
+        <button className="demo-btn secondary" data-testid="s4-predict" disabled={busy || rows.length === 0} onClick={predict}>
           GDS · predict held-out links
         </button>
       </div>
@@ -695,6 +696,7 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
               {rows.slice(0, 15).map((r) => (
                 <tr
                   className="clickable"
+                  data-testid={`s4-row-${r.positionId}`}
                   key={r.positionId}
                   onClick={() => onOpenChronology(r.positionId)}
                 >
@@ -812,6 +814,7 @@ export default function ScenariosTab() {
         {SUB_TABS.map((t) => (
           <button
             className={`sub-tab ${sub === t.id ? "active" : ""}`}
+            data-testid={`subtab-${t.id}`}
             key={t.id}
             onClick={() => setSub(t.id)}
           >

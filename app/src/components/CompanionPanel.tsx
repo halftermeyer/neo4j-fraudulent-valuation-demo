@@ -19,14 +19,17 @@ import GlossaryText from "./Term";
 export function ExplainButton({
   payload,
   small,
+  testId,
 }: {
   payload: () => ExplainPayload | Promise<ExplainPayload>;
   small?: boolean;
+  testId?: string;
 }) {
   const [busy, setBusy] = useState(false);
   return (
     <button
       className={small ? "explain-btn explain-btn-small" : "explain-btn"}
+      data-testid={testId}
       disabled={busy}
       onClick={async (e) => {
         e.stopPropagation();
