@@ -15,6 +15,7 @@ Fails loudly (exit 1, scene id named) if any selector is missing.
 import argparse
 import json
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -25,12 +26,25 @@ sys.path.insert(0, str(ROOT / "scripts"))
 DIST = ROOT / "dist"
 SCRIPT_MD = ROOT / "demo-script.md"
 
+# vocabulary gate: banned in every narration unless the script's ```scene-config
+# `vocabulary:` allow-list lifts the term. "prediction" and "alert" can NOT be
+# lifted — they are banned in every cut.
+BANNED_WORDS = ["prediction", "alert", "regulation-driven", "GDS", "algorithm",
+                "Louvain", "link prediction"]
+HARD_BANNED = ["prediction", "alert"]
+
 KNOWN_SCENES = [
+    # executive cut (demo-script.md)
     "intro", "ingest-market", "ingest-governance", "ingest-cases", "schema-peek",
     "policy-framework", "policy-compute", "s1-conjunction", "s1-graph",
     "s2-chronology", "s2-gaps", "explain-click",
     "s3-pattern", "s4-readacross", "s4-false-positive", "s4-widen",
     "assistant-question", "outro",
+    # technical cut (demo-script-technical.md) — deterministic, no LLM scene
+    "tech-cold-open", "tech-policy-provenance", "tech-gap-branches",
+    "tech-s2-engine", "tech-pattern-node", "tech-matching-query",
+    "tech-discovery-open", "tech-circles", "tech-trajectories",
+    "tech-decorrelation", "tech-reset", "tech-mcp-close",
 ]
 
 TITLE_HTML = """
@@ -48,6 +62,40 @@ border-radius:20px;padding:8px 24px">Neo4j + GDS · RISK ORM demo</div>
 """
 
 
+def parse_config(md_path: Path) -> dict:
+    """The optional ```scene-config block: title/subtitle for the card, `output`
+    (file stem, default 'demo'), `vocabulary` (comma allow-list lifting entries
+    from BANNED_WORDS — except the hard-banned ones)."""
+    text = md_path.read_text()
+    m = re.search(r"```scene-config\n(.*?)```", text, flags=re.DOTALL)
+    cfg = {"output": "demo", "title": None, "subtitle": None, "vocabulary": []}
+    if m:
+        for line in m.group(1).splitlines():
+            if ":" not in line:
+                continue
+            k, v = line.split(":", 1)
+            k, v = k.strip(), v.strip()
+            if k == "vocabulary":
+                cfg[k] = [w.strip() for w in v.split(",") if w.strip()]
+            elif k in cfg:
+                cfg[k] = v
+    return cfg
+
+
+def check_vocabulary(scenes: list[dict], cfg: dict, script: Path) -> None:
+    allowed = {w.lower() for w in cfg["vocabulary"]}
+    hard = {w.lower() for w in HARD_BANNED}
+    banned = [w for w in BANNED_WORDS if w.lower() not in allowed or w.lower() in hard]
+    offenders = []
+    for s in scenes:
+        low = s["narration"].lower()
+        for w in banned:
+            if re.search(r"(?<![\w-])" + re.escape(w.lower()) + r"(?![\w-])", low):
+                offenders.append(f"{s['id']}: banned word '{w}'")
+    if offenders:
+        raise SystemExit(f"vocabulary gate failed for {script.name}:\n" + "\n".join(offenders))
+
+
 def parse_scenes(md_path: Path) -> list[dict]:
     text = md_path.read_text()
     blocks = re.findall(r"```scene\n(.*?)```", text, flags=re.DOTALL)
@@ -61,7 +109,7 @@ def parse_scenes(md_path: Path) -> list[dict]:
         scenes.append({"id": m_id.group(1), "narration": narration})
     ids = [s["id"] for s in scenes]
     if not scenes:
-        raise SystemExit("no ```scene blocks found in demo-script.md")
+        raise SystemExit(f"no ```scene blocks found in {md_path.name}")
     dupes = {i for i in ids if ids.count(i) > 1}
     if dupes:
         raise SystemExit(f"duplicate scene ids: {dupes}")
@@ -154,6 +202,78 @@ class Recorder:
 
     def scene_ingest_cases(self):
         self.ingest("cases")
+
+    # ── technical-cut helpers ──
+    def zoom(self, factor: float):
+        """Page zoom for drawer legibility at 1080p (document.body.style.zoom)."""
+        self.page.evaluate(f"document.body.style.zoom = '{factor}'")
+        self.page.wait_for_timeout(400)
+
+    def drawer(self, want_open: bool):
+        is_open = self.page.locator(".audit-drawer.open").count() > 0
+        if is_open == want_open:
+            return
+        if want_open:
+            self.page.locator(".audit-toggle").click()
+        else:
+            # the open drawer covers the edge toggle — use its own Close button
+            self.page.locator(".audit-drawer.open").get_by_role(
+                "button", name="Close", exact=True).click()
+        self.page.wait_for_timeout(500)
+
+    def drawer_show(self, group_text: str, zoom: float = 1.2, entry_text: str | None = None):
+        """Open the drawer, expand the named query group and one entry (the first,
+        or the one whose title matches `entry_text`) so the Cypher is ON SCREEN,
+        zoomed for legibility. Robust to state left by earlier drawer scenes
+        (expanded entries persist in React state)."""
+        self.zoom(1.0)
+        self.drawer(True)
+        # match the group by its HEAD text (entry bodies may contain anything)
+        group = self.page.locator(
+            ".audit-group",
+            has=self.page.locator(".audit-group-head", has_text=group_text),
+        ).first
+        head = group.locator(".audit-group-head").first
+        for _ in range(4):
+            if group.locator(".audit-entry-head").count() > 0:
+                break
+            head.scroll_into_view_if_needed()
+            head.click()
+            self.page.wait_for_timeout(700)
+        else:
+            raise RuntimeError(f"drawer_show: no entries appeared for group {group_text!r}")
+        entry = (group.locator(".audit-entry", has_text=entry_text).first
+                 if entry_text else group.locator(".audit-entry").first)
+        if entry.locator(".audit-entry-body").count() == 0:
+            entry.locator(".audit-entry-head").first.scroll_into_view_if_needed()
+            entry.locator(".audit-entry-head").first.click()
+            self.page.wait_for_timeout(400)
+        entry.locator(".audit-entry-body").first.scroll_into_view_if_needed()
+        self.zoom(zoom)
+
+    def overlay_terminal(self, command: str, output: str):
+        """A terminal-styled overlay with a REAL command's captured output —
+        used for the make-test line and the MCP tool call (both deterministic)."""
+        import html as html_mod
+        body = html_mod.escape(output)[:4000]
+        cmd = html_mod.escape(command)
+        self.page.evaluate(
+            """(html) => {
+              let d = document.getElementById('__tech_overlay');
+              if (!d) { d = document.createElement('div'); d.id = '__tech_overlay';
+                        document.body.appendChild(d); }
+              d.innerHTML = html;
+            }""",
+            f"""<div style="position:fixed;left:8%;right:8%;top:12%;bottom:14%;z-index:999;
+                 background:#0c1220;color:#d7e3f4;border-radius:12px;padding:26px 30px;
+                 font:15px/1.5 'SF Mono',Menlo,monospace;box-shadow:0 24px 60px rgba(0,0,0,.5);
+                 overflow:hidden;white-space:pre-wrap">
+                 <div style="color:#7ee787">$ {cmd}</div>\n{body}</div>""",
+        )
+        self.page.wait_for_timeout(400)
+
+    def overlay_off(self):
+        self.page.evaluate("document.getElementById('__tech_overlay')?.remove()")
 
     def frame_on(self, locator, block: str = "end", settle_ms: int = 1_200):
         """Cinematic framing: smooth-scroll what the narration talks about into
@@ -319,6 +439,231 @@ class Recorder:
             target.scroll_into_view_if_needed()
         self.page.wait_for_timeout(1_000)
 
+    # ── technical cut (demo-script-technical.md) — deterministic, no LLM ──────
+
+    def scene_tech_cold_open(self):
+        # cold open on the LOADED database: one schema peek per layer, drawer open
+        for layer in ("market", "governance", "cases"):
+            self.tid(f"schema-peek-{layer}").click()
+            self.page.locator(".schema-peek-pop .schema-peek-sample").wait_for(timeout=60_000)
+            self.page.wait_for_timeout(6_000)
+            self.page.mouse.click(24, 620)  # click-away closes
+            self.page.wait_for_timeout(400)
+        self.drawer_show("Schema peek: cases layer", zoom=1.15)
+        self.page.wait_for_timeout(24_000)
+
+    def scene_tech_policy_provenance(self):
+        self.zoom(1.0)
+        self.drawer(False)
+        self.tab("Scenarios")
+        self.tid("subtab-policy").click()
+        self.page.get_by_text("R1", exact=False).first.wait_for(timeout=60_000)
+        self.frame_on(self.page.locator(".policy-grid"), "start")
+        # hover a Source label: the verbatim quote + link on screen
+        self.page.locator(".policy-source").nth(1).hover()
+        self.page.wait_for_timeout(26_000)
+
+    def scene_tech_gap_branches(self):
+        self.fast_begin()
+        self.tid("policy-compute").click()
+        self.tid("gap-summary", timeout=120_000)
+        self.fast_end("gap recomputation")
+        self.frame_on(self.tid("gap-summary"), "center")
+        self.page.wait_for_timeout(1_500)
+        # the single gap query, on screen: UNION branches in the drawer (the
+        # entry with the file banner, not the obligation lookup before it)
+        self.drawer_show("Compute governance gaps", zoom=1.2, entry_text="═")
+        self.page.wait_for_timeout(45_000)
+
+    def scene_tech_s2_engine(self):
+        self.zoom(1.0)
+        self.drawer(False)
+        self.tid("subtab-s2").click()
+        self.tid("s2-position").fill("POS-TP")
+        self.tid("s2-run").click()
+        self.page.get_by_text("MISSED").first.wait_for(timeout=120_000)
+        self.page.locator(".position-timeline canvas").first.wait_for(timeout=120_000)
+        self.page.wait_for_timeout(1_500)
+        # a marker popover: the three graph-written prices (hunt along the band)
+        box = self.page.locator(".position-timeline canvas").first.bounding_box()
+        found = False
+        for fy in (0.28, 0.33, 0.24, 0.38):
+            for fx in [0.35 + 0.02 * i for i in range(21)]:
+                self.page.mouse.click(box["x"] + box["width"] * fx, box["y"] + box["height"] * fy)
+                if self.page.locator(".tlx-popover").count() > 0:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            raise RuntimeError("tech-s2-engine: no timeline marker popover found")
+        self.page.wait_for_timeout(9_000)
+        self.page.mouse.click(30, 700)  # close the popover
+        self.drawer_show("S2 · QPP governance chain", zoom=1.2)
+        self.page.wait_for_timeout(18_000)
+
+    def scene_tech_pattern_node(self):
+        self.zoom(1.0)
+        self.drawer(False)
+        self.tid("subtab-s3").click()
+        self.tid("s3-run").click()
+        self.page.get_by_text("REQUIRES").first.wait_for(timeout=120_000)
+        self.frame_on(self.page.locator(".graph-canvas"), "center")
+        self.page.wait_for_timeout(1_500)
+        self.drawer_show("S3 · Abstract the confirmed case", zoom=1.2)
+        self.page.wait_for_timeout(30_000)
+
+    def scene_tech_matching_query(self):
+        self.zoom(1.0)
+        self.drawer(False)
+        self.tid("subtab-s4").click()
+        self.tid("s4-run").click()
+        self.page.get_by_text("100%").first.wait_for(timeout=120_000)
+        self.drawer_show("S4 · Read-across", zoom=1.2)
+        self.page.wait_for_timeout(32_000)
+        self.zoom(1.0)
+        self.drawer(False)
+        # drop the structural condition — the set widens — then restore it
+        chips = self.page.locator(".chips")
+        self.frame_on(chips, "center")
+        chips.locator(".chip", has_text="Segregation of duties").locator(".chip-x").click()
+        self.page.wait_for_timeout(1_800)
+        self.page.locator(".chips select").select_option(label="Gap: Segregation of duties")
+        self.page.get_by_role("button", name="Add", exact=True).click()
+        self.page.wait_for_timeout(1_800)
+
+    def scene_tech_discovery_open(self):
+        self.tid("tech-toggle").click()
+        self.page.get_by_role("tab", name="Discovery").click()
+        self.page.get_by_text("Structure finds what you didn't").wait_for(timeout=30_000)
+        self.page.wait_for_timeout(5_000)
+
+    def scene_tech_circles(self):
+        self.fast_begin()
+        self.tid("disc-circles-run").click()
+        self.page.locator(".disc-circles-table tbody tr").first.wait_for(timeout=240_000)
+        self.fast_end("graph computation")
+        self.frame_on(self.page.locator(".disc-circles-table"), "center")
+        self.page.wait_for_timeout(2_000)
+        self.drawer_show("Discovery · approval circles", zoom=1.2, entry_text="louvain")
+        self.page.wait_for_timeout(26_000)
+        self.zoom(1.0)
+        self.drawer(False)
+        self.tid("disc-circles-propose").click()
+        self.page.get_by_text("badged candidate").wait_for(timeout=60_000)
+        # the candidate lands in the Policy step
+        self.tab("Scenarios")
+        self.tid("subtab-policy").click()
+        self.frame_on(self.page.get_by_text("R-C1").first, "center")
+        self.page.wait_for_timeout(4_500)
+        # back to Discovery; the explainer, paged to the modularity slide
+        self.page.get_by_role("tab", name="Discovery").click()
+        self.tid("disc-how-circles").click()
+        self.page.locator(".disc-explainer-modal").wait_for(timeout=30_000)
+        for _ in range(2):
+            self.page.keyboard.press("ArrowRight")
+            self.page.wait_for_timeout(1_400)
+        self.page.wait_for_timeout(12_000)
+        self.page.keyboard.press("Escape")
+
+    def scene_tech_trajectories(self):
+        self.fast_begin()
+        self.tid("disc-traj-run").click()
+        self.page.locator('[data-testid="disc-panel-traj"] tbody tr').first.wait_for(timeout=300_000)
+        self.fast_end("graph computation")
+        self.frame_on(self.page.locator(".disc-heatmaps"), "center")
+        self.page.wait_for_timeout(16_000)
+        self.frame_on(self.page.locator(".disc-eval"), "center")
+        self.page.wait_for_timeout(6_000)
+        # explainer: page to the published worked-example slide
+        self.tid("disc-how-trajectories").click()
+        self.page.locator(".disc-explainer-modal").wait_for(timeout=30_000)
+        self.page.keyboard.press("ArrowRight")
+        self.page.get_by_text("Proven against the published example").wait_for(timeout=10_000)
+        self.page.wait_for_timeout(18_000)
+        self.page.keyboard.press("Escape")
+        # output button → the S4 receiver row with provenance
+        self.page.locator('[data-testid^="disc-watch-"]').first.click()
+        self.page.get_by_text("added to the S4 watchlist").wait_for(timeout=60_000)
+        self.tab("Scenarios")
+        self.tid("subtab-s4").click()
+        self.tid("s4-watchlist", timeout=30_000)
+        self.frame_on(self.tid("s4-watchlist"), "center")
+        self.page.wait_for_timeout(5_000)
+        self.page.get_by_role("tab", name="Discovery").click()
+
+    def scene_tech_decorrelation(self):
+        self.fast_begin()
+        self.tid("disc-decorr-run").click()
+        self.page.locator('[data-testid="disc-panel-decorr"] tbody tr').first.wait_for(timeout=300_000)
+        self.fast_end("graph computation")
+        self.frame_on(self.page.locator('[data-testid="disc-panel-decorr"]'), "start")
+        self.page.wait_for_timeout(5_000)
+        self.drawer_show("Discovery · peer decorrelation", zoom=1.2)
+        self.page.wait_for_timeout(22_000)
+        self.zoom(1.0)
+        self.drawer(False)
+        # ALL Discovery interactions BEFORE navigating: the tab unmounts on a
+        # tab switch and the panel's result state (and its buttons) would vanish
+        self.tid("disc-decorr-r10").click()
+        self.page.get_by_text("the gap query evaluates it").wait_for(timeout=120_000)
+        self.frame_on(self.page.locator('[data-testid="disc-panel-decorr"] table'), "center")
+        self.page.wait_for_timeout(6_000)
+        self.tid("disc-how-decorrelation").click()
+        self.page.locator(".disc-explainer-modal").wait_for(timeout=30_000)
+        for _ in range(5):
+            self.page.keyboard.press("ArrowRight")
+            self.page.wait_for_timeout(500)
+        self.page.get_by_text("is not a control").first.wait_for(timeout=10_000)
+        self.page.wait_for_timeout(6_500)
+        self.page.keyboard.press("Escape")
+        self.tid("disc-decorr-clusters").click()
+        self.page.get_by_text("behaviour clusters written").wait_for(timeout=60_000)
+        # the ▼ marker sits between the overrides on POS-TP's timeline
+        self.tab("Scenarios")
+        self.tid("subtab-s2").click()
+        self.tid("s2-position").fill("POS-TP")
+        self.tid("s2-run").click()
+        self.page.locator(".position-timeline canvas").first.wait_for(timeout=120_000)
+        self.frame_on(self.page.locator(".position-timeline"), "center")
+        self.page.wait_for_timeout(6_000)
+        # the new attributes are in the graph — visible in Explore's counters
+        self.tab("Explore")
+        self.frame_on(self.page.locator(".db-counts"), "center")
+        self.page.wait_for_timeout(4_500)
+
+    def scene_tech_reset(self):
+        self.page.get_by_role("tab", name="Discovery").click()
+        self.tid("disc-reset").click()
+        self.page.get_by_text("every Discovery write removed").wait_for(timeout=60_000)
+        self.page.wait_for_timeout(1_200)
+        # the guarantee, on screen: the REAL test output, captured now
+        proc = subprocess.run(
+            ["uv", "run", "pytest", "tests/test_no_gds_executive.py", "-v", "--no-header"],
+            capture_output=True, text=True, cwd=ROOT)
+        lines = [ln for ln in proc.stdout.splitlines()
+                 if "test_executive" in ln or "passed" in ln]
+        self.overlay_terminal("uv run pytest tests/test_no_gds_executive.py -v",
+                              "\n".join(lines))
+        self.page.wait_for_timeout(18_000)
+        self.overlay_off()
+
+    def scene_tech_mcp_close(self):
+        # one REAL tool call against the same typed tools the Assistant uses
+        code = ("import json, mcp_server; rows = mcp_server.tool_expected_controls('POS-TP'); "
+                "broken = [r for r in rows if r['status'] in ('MISSED','LATE')]; "
+                "print(json.dumps(broken[:3], indent=1, default=str)); "
+                "print(f'... {len(broken)} broken controls on POS-TP')")
+        proc = subprocess.run(["uv", "run", "python", "-c", code],
+                              capture_output=True, text=True, cwd=ROOT)
+        self.overlay_terminal(
+            "python -c \"mcp_server.tool_expected_controls('POS-TP')\"  # MCP typed tool",
+            proc.stdout or proc.stderr)
+        self.page.wait_for_timeout(20_000)
+        self.overlay_off()
+        self.drawer(True)  # end on the audit drawer
+        self.page.wait_for_timeout(6_000)
+
     def run_scene(self, scene_id: str):
         method = getattr(self, "scene_" + scene_id.replace("-", "_"))
         method()
@@ -328,10 +673,16 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-audio", action="store_true", help="silent cut for pacing checks")
     ap.add_argument("--base", default=None, help="app base URL (default: probe 5173-5176)")
+    ap.add_argument("--script", default=str(SCRIPT_MD),
+                    help="storyboard markdown (default: demo-script.md)")
     args = ap.parse_args()
 
-    scenes = parse_scenes(SCRIPT_MD)
-    print(f"{len(scenes)} scenes parsed from demo-script.md")
+    script = Path(args.script)
+    cfg = parse_config(script)
+    name = cfg["output"]
+    scenes = parse_scenes(script)
+    check_vocabulary(scenes, cfg, script)
+    print(f"{len(scenes)} scenes parsed from {script.name} (cut '{name}', vocabulary gate passed)")
 
     audio: dict[str, Path | None] = {}
     durations: dict[str, float] = {}
@@ -360,12 +711,23 @@ def main() -> None:
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
 
-        # title card (separate, non-recorded context)
+        # title card (separate, non-recorded context) — per-script title/subtitle
+        title_html = TITLE_HTML
+        if cfg["title"]:
+            title_html = re.sub(
+                r'(letter-spacing:-1px[^>]*>)\n?.*?(</div>)',
+                lambda m: m.group(1) + "\n" + cfg["title"] + m.group(2),
+                title_html, count=1, flags=re.DOTALL)
+        if cfg["subtitle"]:
+            title_html = re.sub(
+                r'(line-height:1\.5">)\n?.*?(</div>)',
+                lambda m: m.group(1) + "\n" + cfg["subtitle"] + m.group(2),
+                title_html, count=1, flags=re.DOTALL)
         tctx = browser.new_context(viewport={"width": 1920, "height": 1080})
         tpage = tctx.new_page()
-        tpage.set_content(TITLE_HTML)
+        tpage.set_content(title_html)
         tpage.wait_for_timeout(400)
-        tpage.screenshot(path=str(DIST / "title.png"))
+        tpage.screenshot(path=str(DIST / f"title-{name}.png"))
         tctx.close()
 
         ctx = browser.new_context(
@@ -412,18 +774,19 @@ def main() -> None:
         raw_path = Path(video.path())
         browser.close()
 
-    session = DIST / "raw" / "session.webm"
+    session = DIST / "raw" / f"{name}.webm"
     if raw_path != session:
         session.unlink(missing_ok=True)
         raw_path.rename(session)
 
-    (DIST / "scenes.json").write_text(json.dumps({
-        "video": "raw/session.webm",
-        "title_card": "title.png",
+    index = DIST / f"scenes-{name}.json"
+    index.write_text(json.dumps({
+        "video": f"raw/{name}.webm",
+        "title_card": f"title-{name}.png",
         "scenes": results,
     }, indent=1))
     total = results[-1]["end"]
-    print(f"recorded {len(results)} scenes, {total:.0f}s -> dist/raw/session.webm + dist/scenes.json")
+    print(f"recorded {len(results)} scenes, {total:.0f}s -> {session} + {index}")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ storyboard timestamps: 3 s title card + screen track with narration aligned to
 each scene's start, burned-in subtitles from the narration. H.264, 1080p, no
 music. Requires ffmpeg and a prior run of scripts/record_demo.py."""
 
+import argparse
 import json
 import re
 import shutil
@@ -136,11 +137,17 @@ def render_cue_pngs(cues: list[tuple[float, float, str]], out_dir: Path) -> list
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--name", default="demo",
+                    help="cut name: reads dist/scenes-<name>.json, writes dist/<name>.mp4")
+    args = ap.parse_args()
+    name = args.name
+
     if not shutil.which("ffmpeg"):
         raise SystemExit("ffmpeg not found on PATH — brew install ffmpeg")
-    meta_path = DIST / "scenes.json"
+    meta_path = DIST / f"scenes-{name}.json"
     if not meta_path.exists():
-        raise SystemExit("dist/scenes.json missing — run scripts/record_demo.py first")
+        raise SystemExit(f"{meta_path} missing — run scripts/record_demo.py first")
     meta = json.loads(meta_path.read_text())
     scenes = meta["scenes"]
     webm = DIST / meta["video"]
@@ -161,12 +168,12 @@ def main() -> None:
     # sidecar SRT aligned to the FINAL video (title offset); the burn happens on
     # the main transcode, so those cues use remapped recording time (offset 0) —
     # the concat-copied _cat.mp4 has stitched timestamps that break enable=between()
-    srt = DIST / "subtitles.srt"
+    srt = DIST / f"subtitles-{name}.srt"
     write_srt(build_cues(scenes, TITLE_SECONDS, remap), srt)
     cues = build_cues(scenes, 0.0, remap)
 
-    title_mp4 = DIST / "_title.mp4"
-    main_mp4 = DIST / "_main.mp4"
+    title_mp4 = DIST / f"_title-{name}.mp4"
+    main_mp4 = DIST / f"_main-{name}.mp4"
 
     # 1. title card (3 s, silent stereo aac so concat streams match)
     run(["ffmpeg", "-y", "-loop", "1", "-framerate", "30", "-t", str(TITLE_SECONDS),
@@ -179,7 +186,7 @@ def main() -> None:
     # ffmpeg bottle has no libass) + narration aligned per scene (or silence).
     if ffmpeg_has_subtitles_filter():
         print("note: ffmpeg has libass — the overlay-PNG burn is still used for uniformity")
-    pngs = render_cue_pngs(cues, DIST / "subs")
+    pngs = render_cue_pngs(cues, DIST / f"subs-{name}")
 
     cmd = ["ffmpeg", "-y", "-i", str(webm)]
     for p in pngs:
@@ -236,8 +243,8 @@ def main() -> None:
     run(cmd)
 
     # 3. concat title + main -> final (codecs match; -c copy)
-    out = DIST / "demo.mp4"
-    concat_list = DIST / "_concat.txt"
+    out = DIST / f"{name}.mp4"
+    concat_list = DIST / f"_concat-{name}.txt"
     concat_list.write_text(f"file '{title_mp4.name}'\nfile '{main_mp4.name}'\n")
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list),
          "-c", "copy", str(out)])
@@ -245,7 +252,7 @@ def main() -> None:
     for p in (title_mp4, main_mp4, concat_list):
         p.unlink(missing_ok=True)
     size_mb = out.stat().st_size / 1e6
-    print(f"dist/demo.mp4 ready ({size_mb:.1f} MB)")
+    print(f"dist/{name}.mp4 ready ({size_mb:.1f} MB)")
 
 
 if __name__ == "__main__":

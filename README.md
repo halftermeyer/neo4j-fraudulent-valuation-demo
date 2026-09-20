@@ -183,18 +183,34 @@ demo-script.md              25-minute walkthrough, objections, bibliography
 DATA_PLAN.md / DECISIONS.md validated plan + running decision log
 ```
 
-## Demo video (`make video`)
+## Demo videos (`make video`, `make video-technical`)
 
-`make video` produces a narrated walkthrough `dist/demo.mp4` (H.264, 1080p, no
-music): a 3-second title card, the recorded in-app run (reset → three-layer
-ingest → Explore reveal → S1–S4 → false-positive click-through → one live policy
-change → one Explain click → one Assistant question), per-scene narration and
-burned-in subtitles.
+Two cuts from the same pipeline, never overwriting each other:
 
-- **Storyboard = `demo-script.md`**: the fenced ```` ```scene ```` blocks at the
-  bottom are the single source of truth (stable `id`, human-readable `action`,
-  2–4 sentence `narration`). Edit narration freely and re-run; audio is cached in
-  `dist/audio/` by hash of the text, so only changed scenes are re-synthesized.
+- **`make video` → `dist/demo.mp4`** — the executive cut (~5 min): title card,
+  reset → three-layer ingest → schema peek → Policy + gap computation →
+  timeline-first conjunction → chronology + Explain → pattern → read-across +
+  false positive + pattern edit → one Assistant question (last), narration and
+  burned-in subtitles.
+- **`make video-technical` → `dist/demo-technical.mp4`** — the under-the-hood
+  cut (~8 min) for technical/FinCrime audiences: fully deterministic (no LLM
+  scene), the audit drawer zoomed on the gap query's UNION branches / the QPP /
+  the pattern extraction / the scoring query, the three Discovery panels with
+  their explainers, real terminal overlays (the passing `test_no_gds_executive`
+  line, one live MCP tool call), silent reading dwells on every Cypher shot.
+  A pre-clean step (`scripts/discovery_reset.py`) removes Discovery writes so
+  recording attempts never pollute each other.
+
+- **Storyboards**: `demo-script.md` and `demo-script-technical.md` — the fenced
+  ```` ```scene ```` blocks are the single source of truth (stable `id`,
+  `before`/`actions`/`shot` documentation, short `narration`). A ```` ```scene-config ````
+  block per script sets the title card, the output name and the **vocabulary
+  gate**: banned words are checked at parse time; the technical script's
+  allow-list admits Louvain/kNN/Pearson/embedding/FastPath/GDS/Cypher/MCP;
+  "prediction" and "alert" are hard-banned in every cut. Audio is cached in
+  `dist/audio/` by text hash. Each run ends with `scripts/frames.py` writing a
+  per-scene contact sheet (`dist/contact-<name>.png`) — review it before
+  committing changes.
 - **Prerequisites**: app dev server running (ports 5173–5176 are probed), the
   database loaded/reachable, `ffmpeg` on PATH, `GEMINI_API_KEY` in `inputs/.env`
   (narration uses Gemini TTS; set `TTS_PROVIDER=elevenlabs` + implement the stub

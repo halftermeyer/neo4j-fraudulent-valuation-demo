@@ -62,7 +62,11 @@ Read `README.md` for architecture, `DATA_PLAN.md` for the validated data design,
   (wipes `app/public/data/` → re-run `make explain` after).
 - `make load` (CLI path) / in-app Ingest (UI path) — equivalent, both tested.
 - `make test`, `make explain` (companion pregen, needs GEMINI_API_KEY),
-  `make video [VIDEO_FLAGS=--no-audio]` (needs dev server up + ffmpeg).
+  `make video [VIDEO_FLAGS=--no-audio]` (executive cut) and
+  `make video-technical[-silent]` (under-the-hood cut, deterministic, own
+  storyboard demo-script-technical.md; scene-config carries the vocabulary
+  allow-list; contact sheets via scripts/frames.py) — both need dev server +
+  ffmpeg; artifacts are per-cut (scenes-<name>.json, <name>.mp4).
 - App checks: `cd app && npx tsc -b && npx oxlint src`. E2E driver: `app/e2e.mjs`.
 
 ## Gotchas

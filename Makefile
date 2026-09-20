@@ -1,6 +1,6 @@
 # Mismarking demo — replayable end-to-end pipeline (see DATA_PLAN.md)
 
-.PHONY: env download data load test app all clean-data explain video
+.PHONY: env download data load test app all clean-data explain video video-technical video-technical-silent
 
 env:              ## derive root .env and app/.env from inputs/.env
 	python3 scripts/make_env.py
@@ -21,11 +21,21 @@ explain:          ## pre-generate AI-companion explanations for the scripted dem
 	## app/public/data where the served copy lives)
 	set -a && . ./.env && set +a && uv run python scripts/pregen_explanations.py
 
-video:            ## record + narrate + assemble dist/demo.mp4 from the demo-script storyboard
+video:            ## record + narrate + assemble dist/demo.mp4 (executive cut)
 	## prerequisites: app dev server running, DB reachable, ffmpeg, GEMINI_API_KEY
 	## silent pacing cut: make video VIDEO_FLAGS=--no-audio
 	uv run python scripts/record_demo.py $(VIDEO_FLAGS)
 	uv run python scripts/assemble_video.py
+	uv run python scripts/frames.py
+
+video-technical:  ## record + narrate + assemble dist/demo-technical.mp4 (under-the-hood cut)
+	uv run python scripts/discovery_reset.py  # recording attempts must not pollute each other
+	uv run python scripts/record_demo.py --script demo-script-technical.md $(VIDEO_FLAGS)
+	uv run python scripts/assemble_video.py --name demo-technical
+	uv run python scripts/frames.py --name demo-technical
+
+video-technical-silent:  ## silent pacing cut of the technical video
+	$(MAKE) video-technical VIDEO_FLAGS=--no-audio
 
 test:             ## run the acceptance tests against the loaded database + the TS FastPath mirror
 	uv run pytest tests/ -v
