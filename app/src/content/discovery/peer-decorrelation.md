@@ -32,7 +32,13 @@ A `DecorrelationSignal` fires when $\rho <$ `decorrThreshold` (0.45) for `decorr
 
 # Why the false positive decorrelates too — and what R10 checks instead
 
-Decorrelation is **not** an accusation: POS-FP fires exactly like the case, because its model went stale at the 2022 shock. What separates them is *what happened next*, and that lives in the governance graph, not in the price series. **R10** requires a **pre-approved** methodology change effective around the signal (approval at or before its effective date), or an IPV review within the SLA. POS-FP: recalibration approved Oct 12, effective Oct 20 → **MET**, and its marks re-correlate immediately. POS-TP: nothing but a post-hoc-approved VaR change → **MISSED**. "Pre-approved" is the load-bearing word — it is what stops after-the-fact paperwork from exculpating.
+Decorrelation is **not** an accusation: POS-FP fires exactly like the case, because its model went stale at the 2022 shock. What separates them is *what happened next*, and that lives in the governance graph, not in the price series. **R10** requires a **pre-approved** methodology change effective around the signal (approval at or before its effective date), **or** an IPV review that **addresses** the divergence — adjustment/challenge evidence, or an explicit `adjusted` / `challenged` / `explained` outcome. POS-FP: recalibration approved Oct 12, effective Oct 20 → **MET**, and its marks re-correlate immediately. POS-TP: nothing but a post-hoc-approved VaR change → **MISSED**. "Pre-approved" is one load-bearing word; "addresses" is the other.
+
+---
+
+# Why "the IPV ran" is not a control
+
+In the public case the quarter-end valuation review **occurred** — and **upheld** the marks (a divergence of 600 bps, judged "within tolerance"). That is why R10's second clause does not accept mere occurrence: a review with outcome `no finding`, `within tolerance`, or with no evidence attached, satisfies nothing. This is R5's lesson applied to a structure-born rule — **control executed ≠ control effective** — and it is what keeps a monthly IPV heartbeat from silently exculpating every decorrelation on real data.
 
 ---
 

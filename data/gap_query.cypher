@@ -277,9 +277,13 @@ UNION ALL
 
 // ── R10 · Peer decorrelation resolution (Discovery-proposed) ─────────────────
 // "DecorrelationSignal with neither a PRE-APPROVED MethodologyChange effective
-//  around it nor an IPVReview within slaDays" — status 'industry practice, not
-//  a rule'. INERT until the Discovery panel creates both the R10 obligation and
-//  the :DecorrelationSignal events; the acceptance sets are untouched without them.
+//  around it nor an IPVReview within slaDays that ADDRESSES the divergence" —
+// a review that merely OCCURS does not count (in the public case the quarter-end
+// review occurred and upheld the marks): it must carry an adjustment/challenge
+// Evidence or an explicit outcome in ('adjusted','challenged','explained').
+// Status 'industry practice, not a rule'. INERT until the Discovery panel
+// creates both the R10 obligation and the :DecorrelationSignal events; the
+// acceptance sets are untouched without them.
 MATCH (o:ControlObligation {id: 'R10'})
 WHERE $ruleId IS NULL OR $ruleId = o.id
 MATCH (p:Position)-[:GENERATED_SIGNAL]->(ds:DecorrelationSignal)
@@ -291,7 +295,10 @@ WITH o, p, ds, dueBy,
                  AND coalesce(mc.effectiveAt, mc.at) >= ds.at - duration({days: o.slaDays})
                  AND coalesce(mc.effectiveAt, mc.at) <= dueBy }
       OR EXISTS { MATCH (p)-[:REVIEWED_BY]->(ipv:IPVReview)
-                  WHERE ipv.at >= ds.at AND ipv.at <= dueBy }) AS resolved
+                  WHERE ipv.at >= ds.at AND ipv.at <= dueBy
+                    AND (ipv.outcome IN ['adjusted', 'challenged', 'explained']
+                         OR EXISTS { MATCH (ipv)-[:EVIDENCED_BY]->(ev:Evidence)
+                                     WHERE ev.type IN ['adjustment', 'challenge'] }) }) AS resolved
 WITH o, p, ds, dueBy,
      CASE WHEN resolved THEN 'MET'
           WHEN dueBy > $asOf THEN 'PENDING'

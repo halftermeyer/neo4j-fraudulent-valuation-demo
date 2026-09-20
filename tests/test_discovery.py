@@ -36,9 +36,9 @@ SET o.name = 'Peer decorrelation resolution',
     o.status = 'industry practice, not a rule',
     o.severity = 'medium', o.timing = 'AFTER', o.slaDays = 30,
     o.triggerEvent = 'DecorrelationSignal',
-    o.requiredControl = 'Pre-approved MethodologyChange effective around the signal OR IPVReview within slaDays',
+    o.requiredControl = 'Pre-approved MethodologyChange effective around the signal OR IPVReview within slaDays that ADDRESSES the divergence (adjustment/challenge evidence, or outcome adjusted|challenged|explained)',
     o.requiredByRole = 'Desk head + IPV',
-    o.gapDefinition = 'DecorrelationSignal with neither an approved methodology change nor an IPV review resolving it',
+    o.gapDefinition = 'DecorrelationSignal with neither an approved methodology change nor an IPV review that addressed it — a review that merely occurred does not count',
     o.paramsJson = '{"windowWeeks": 8, "decorrThreshold": 0.45, "decorrPeriods": 2}'
 """
 

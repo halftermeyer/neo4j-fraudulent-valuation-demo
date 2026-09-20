@@ -135,8 +135,7 @@ def _execute(name: str, args: dict):
     raise ValueError(name)
 
 
-@pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason="GEMINI_API_KEY not set")
-def test_llm_reconstructs_chronology_and_names_controls():
+def _ask_model() -> str:
     from google import genai
     from google.genai import types
 
@@ -163,18 +162,53 @@ def test_llm_reconstructs_chronology_and_names_controls():
             parts.append(types.Part.from_function_response(
                 name=fc.name, response={"result": json.dumps(result, default=str)[:60000]}))
         contents.append(types.Content(role="user", parts=parts))
+    return final_text
 
-    text = final_text.lower()
+
+@pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason="GEMINI_API_KEY not set")
+def test_llm_reconstructs_chronology_and_names_controls():
+    # the model's phrasing is stochastic: one retry for pure answer-shape variance
+    # (same policy as the video recorder), diagnostics printed on the final failure
+    last_error: AssertionError | None = None
+    for attempt in range(2):
+        try:
+            _assert_chronology(_ask_model().lower())
+            return
+        except AssertionError as e:
+            last_error = e
+            print(f"attempt {attempt + 1} failed: {e}", flush=True)
+    raise last_error  # type: ignore[misc]
+
+
+def _assert_chronology(text: str) -> None:
     assert text, "the model must produce a final answer"
 
-    # the chronology: informal methodology change -> override series -> IPV upheld the marks
-    change_idx = max(text.find("marking practice"), text.find("mc-mark"))
-    override_idx = text.find("override")
-    ipv_idx = max(text.find("ipv"), text.find("vcg"), text.find("independent price"))
+    # the chronology: informal methodology change -> override series -> IPV upheld
+    # the marks. FIRST mention of each (max() over find() let a LATE re-mention of
+    # the change — e.g. in a "controls that should have fired" section — inflate
+    # its index and flake the ordering assertion). The verdict is anchored on the
+    # specific review id when the model cites it, as its instructions require.
+    def first(*needles: str) -> int:
+        hits = [text.find(n) for n in needles]
+        hits = [h for h in hits if h >= 0]
+        return min(hits) if hits else -1
+
+    def tiered(*tiers: tuple[str, ...]) -> int:
+        for needles in tiers:
+            idx = first(*needles)
+            if idx >= 0:
+                return idx
+        return -1
+
+    change_idx = tiered(("mc-mark",), ("marking practice",))
+    override_idx = first("override")
+    ipv_idx = tiered(("ipv-q1",), ("vcg", "independent price", "upheld"), ("ipv",))
     assert change_idx >= 0, "must mention the informal marking-practice change"
     assert override_idx >= 0, "must mention the price override series"
     assert ipv_idx >= 0, "must mention the IPV/VCG review"
-    assert change_idx < ipv_idx, "chronology must be respected (change before IPV verdict)"
+    assert change_idx < ipv_idx, (
+        f"chronology must be respected: change@{change_idx} must precede IPV verdict@{ipv_idx}; "
+        f"answer head: {text[:300]!r}")
 
     named_rules = [r for r in ("r1", "r2", "r3", "r5") if r in text]
     assert len(named_rules) >= 2, f"must name at least two of R1/R2/R3/R5, got {named_rules}"

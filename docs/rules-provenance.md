@@ -28,7 +28,7 @@ Every quote below was verified against the linked text on 2026-09-18 (not from m
 
 | Rule | Origin | Requirement it formalises | Status |
 |---|---|---|---|
-| **R10** Peer decorrelation resolution | the **Discovery** tab's peer-decorrelation panel (structure-proposed, written by its output button; removed by Reset Discovery) | a book whose marks stop correlating with its peer group must be explained by a **pre-approved** methodology change effective around the signal, or reviewed within the SLA | **industry practice, not a rule** |
+| **R10** Peer decorrelation resolution | the **Discovery** tab's peer-decorrelation panel (structure-proposed, written by its output button; removed by Reset Discovery) | a book whose marks stop correlating with its peer group must be explained by a **pre-approved** methodology change effective around the signal, or by an IPV review that **addresses** the divergence — adjustment/challenge evidence or an explicit `adjusted`/`challenged`/`explained` outcome. A review that merely *occurs* does not count: in the public case the quarter-end review occurred and **upheld** the marks | **industry practice, not a rule** |
 
 R10 exists in `data/gap_query.cypher` as an inert branch: without the R10
 obligation node and the `:DecorrelationSignal` events (both Discovery-written)

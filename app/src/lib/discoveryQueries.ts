@@ -534,9 +534,9 @@ export async function addRuleR10(p: DecorrParams = DECORR_DEFAULTS): Promise<voi
            o.status = 'industry practice, not a rule',
            o.severity = 'medium', o.timing = 'AFTER', o.slaDays = 30,
            o.triggerEvent = 'DecorrelationSignal',
-           o.requiredControl = 'Pre-approved MethodologyChange effective around the signal OR IPVReview within slaDays',
+           o.requiredControl = 'Pre-approved MethodologyChange effective around the signal OR IPVReview within slaDays that ADDRESSES the divergence (adjustment/challenge evidence, or outcome adjusted|challenged|explained)',
            o.requiredByRole = 'Desk head + IPV',
-           o.gapDefinition = 'DecorrelationSignal with neither an approved methodology change nor an IPV review resolving it',
+           o.gapDefinition = 'DecorrelationSignal with neither an approved methodology change nor an IPV review that addressed it — a review that merely occurred does not count',
            o.paramsJson = '{"windowWeeks": ' + toString($w) + ', "decorrThreshold": ' + toString($t)
              + ', "decorrPeriods": ' + toString($n) + '}',
            o.defaultParamsJson = o.paramsJson`,

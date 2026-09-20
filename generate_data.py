@@ -1346,9 +1346,12 @@ def build_benign_decorrelations(positions: list[dict], benign_ids: list[str]):
                      independent_approver(desk_of[pid]), committee="COM-VAL",
                      evidenced=True)
         ipv = eid("IPV")
+        # 'explained' + adjustment evidence: the review ADDRESSED the divergence
+        # (R10's second clause — a review that merely occurs does not count)
         G.event("governance", "IPVReview", ipv, pid, dt(BENIGN_IPV_AT, 11),
-                divergenceBps=12, outcome="post-change validation")
+                divergenceBps=12, outcome="explained")
         G.rel("governance", "REVIEWED_BY", pid, ipv)
+        add_evidence("governance", pid, ipv, BENIGN_IPV_AT + timedelta(days=1), "adjustment")
 
 
 def remove_gap_holdout(exclude: set[str]) -> list[dict]:
