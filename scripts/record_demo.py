@@ -26,23 +26,22 @@ DIST = ROOT / "dist"
 SCRIPT_MD = ROOT / "demo-script.md"
 
 KNOWN_SCENES = [
-    "intro", "ingest-market", "ingest-governance", "ingest-cases",
-    "schema-peek", "explore-position", "explore-signals",
-    "policy-framework", "policy-compute",
-    "s1-conjunction", "s1-community",
-    "s2-chronology", "s2-gaps", "s3-pattern", "s4-readacross", "s4-predict",
-    "s4-false-positive", "policy-change", "explain-click", "assistant-question",
-    "outro",
+    "intro", "ingest-market", "ingest-governance", "ingest-cases", "schema-peek",
+    "policy-framework", "policy-compute", "s1-conjunction", "s1-graph",
+    "s2-chronology", "s2-gaps", "explain-click",
+    "s3-pattern", "s4-readacross", "s4-false-positive", "s4-widen",
+    "assistant-question", "outro",
 ]
 
 TITLE_HTML = """
 <html><body style="margin:0;width:1920px;height:1080px;display:flex;flex-direction:column;
 justify-content:center;align-items:center;font-family:Inter,Helvetica,Arial,sans-serif;
 background:linear-gradient(135deg,#0b297d 0%,#006fd6 70%,#00b4d8 100%);color:#fff">
-<div style="font-size:64px;font-weight:800;letter-spacing:-1px">Mismarking Detection on Neo4j</div>
+<div style="font-size:58px;font-weight:800;letter-spacing:-1px;max-width:1500px;text-align:center">
+Fraudulent valuation — from weak signals to read-across</div>
 <div style="font-size:28px;max-width:1100px;text-align:center;margin-top:28px;opacity:.94;line-height:1.5">
-The graph does not detect fraud. It detects the conjunction of weak signals that fraud
-leaves behind — a human establishes intent.</div>
+The graph does not detect fraud. It detects the shape fraud leaves behind —
+a human establishes intent.</div>
 <div style="font-size:20px;margin-top:56px;opacity:.75;border:1px solid rgba(255,255,255,.5);
 border-radius:20px;padding:8px 24px">Neo4j + GDS · RISK ORM demo</div>
 </body></html>
@@ -164,32 +163,10 @@ class Recorder:
         self.page.wait_for_timeout(settle_ms)
 
     def scene_schema_peek(self):
-        self.tid("schema-peek-governance").click()
+        self.tid("schema-peek-market").click()
         self.page.locator(".schema-peek-pop .schema-peek-sample").wait_for(timeout=60_000)
         self.frame_on(self.page.locator(".schema-peek-pop"), "center")
         self.page.wait_for_timeout(1_500)
-
-    def scene_explore_position(self):
-        # click-away closes the schema-peek popover left open by the previous scene
-        self.page.mouse.click(24, 620)
-        self.page.wait_for_timeout(400)
-        self.tid("select-position").select_option("POS-TP")
-        for step in ("step-1", "step-2", "step-3"):
-            self.tid(step).click()
-            self.page.wait_for_timeout(1_000)
-        # the narration talks about the node + price chart — bring them on screen
-        self.frame_on(self.page.locator(".graph-canvas"), "end")
-        self.page.wait_for_timeout(1_500)
-
-    def scene_explore_signals(self):
-        # frame the canvas first: buttons, chart and graph then share the viewport,
-        # so the audience watches the shape form while the clicks happen
-        self.frame_on(self.page.locator(".graph-canvas"), "end")
-        for k in ("add-pnl", "add-overrides", "add-changes", "add-ipv", "add-gaps"):
-            self.tid(k).click()
-            self.page.wait_for_timeout(900)
-        self.frame_on(self.page.locator(".graph-canvas"), "end")
-        self.page.wait_for_timeout(2_500)
 
     def scene_policy_framework(self):
         self.tab("Scenarios")
@@ -214,11 +191,10 @@ class Recorder:
         self.frame_on(self.page.locator(".s1-layout"), "start")
         self.page.wait_for_timeout(2_500)
 
-    def scene_s1_community(self):
+    def scene_s1_graph(self):
+        # the network behind the chart: the conjunction coloured, the rest grey
         self.tid("s1-show-graph").click()
         self.page.locator(".s1-graph .graph-canvas").first.wait_for(timeout=60_000)
-        self.tid("s1-louvain").click()
-        self.page.get_by_text("Louvain found").wait_for(timeout=300_000)
         self.frame_on(self.page.locator(".s1-graph .graph-canvas"), "center")
         self.page.wait_for_timeout(2_500)
 
@@ -237,6 +213,10 @@ class Recorder:
         self.page.wait_for_timeout(800)
 
     def scene_s3_pattern(self):
+        # the companion panel (left open by the explain scene) would crowd S3
+        if self.page.get_by_test_id("companion-close").count() > 0:
+            self.page.get_by_test_id("companion-close").click()
+            self.page.wait_for_timeout(400)
         self.tid("subtab-s3").click()
         self.tid("s3-run").click()
         self.page.get_by_text("REQUIRES").first.wait_for(timeout=120_000)
@@ -250,12 +230,6 @@ class Recorder:
         self.frame_on(self.page.get_by_text("Every position vs the pattern"), "start")
         self.page.wait_for_timeout(1_500)
 
-    def scene_s4_predict(self):
-        self.tid("s4-predict").click()
-        self.page.get_by_text("held-out").first.wait_for(timeout=300_000)
-        self.frame_on(self.page.get_by_text("held-out").first, "center")
-        self.page.wait_for_timeout(1_500)
-
     def scene_s4_false_positive(self):
         self.frame_on(self.tid("s4-row-POS-FP"), "center")
         self.tid("s4-row-POS-FP").click()
@@ -264,24 +238,33 @@ class Recorder:
         self.page.locator(".position-timeline canvas").first.wait_for(timeout=120_000)
         self.page.wait_for_timeout(1_000)
 
-    def scene_policy_change(self):
-        self.tid("subtab-policy").click()
-        self.frame_on(self.tid("policy-R5-divergenceBps"), "center")
-        field = self.tid("policy-R5-divergenceBps")
-        field.fill("100")
-        self.tid("policy-apply-R5").click()
-        self.page.get_by_test_id("policy-apply-R5").get_by_text("Apply").wait_for(timeout=300_000)
-        self.page.wait_for_timeout(1_200)
-        self.tid("policy-reset").click()
-        self.page.get_by_test_id("policy-reset").get_by_text("Reset to CSV defaults").wait_for(timeout=300_000)
-        self.page.wait_for_timeout(1_200)
+    def scene_s4_widen(self):
+        # back to the matcher (S4 state resets on subtab switch — rerun, live)
+        self.tid("subtab-s4").click()
+        self.tid("s4-run").click()
+        self.page.get_by_text("100%").first.wait_for(timeout=120_000)
+        chips = self.page.locator(".chips")
+        self.frame_on(chips, "center")
+        # remove a condition — the scores re-rank — then put it back
+        chips.locator(".chip", has_text="maturityBucket").locator(".chip-x").click()
+        self.page.wait_for_timeout(1_800)
+        self.page.locator(".chips select").select_option(label="maturityBucket=10Y+")
+        self.page.get_by_role("button", name="Add", exact=True).click()
+        self.page.wait_for_timeout(1_800)
+        # the structural condition (same-desk approval, in the default pattern):
+        # drop it — the set widens — then restore it — the set tightens
+        chips.locator(".chip", has_text="Segregation of duties").locator(".chip-x").click()
+        self.page.wait_for_timeout(1_800)
+        self.page.locator(".chips select").select_option(label="Gap: Segregation of duties")
+        self.page.get_by_role("button", name="Add", exact=True).click()
+        self.page.wait_for_timeout(1_800)
+        self.frame_on(self.page.get_by_text("Every position vs the pattern"), "start")
+        self.page.wait_for_timeout(1_000)
 
     def scene_explain_click(self):
-        self.tid("subtab-s2").click()
-        if self.page.get_by_text("Expected vs observed").count() == 0:
-            self.tid("s2-run").click()
-            self.page.get_by_text("MISSED").first.wait_for(timeout=120_000)
-        self.tid("explain-s2-card").click()
+        # one Explain click on a GAP row (R5 — the review that upheld the marks);
+        # the S2 gap table is already on screen from the previous scene
+        self.page.get_by_test_id("explain-gap-R5").first.click()
         self.page.locator(".companion-entry").first.wait_for(timeout=120_000)
         self.page.wait_for_timeout(800)
 

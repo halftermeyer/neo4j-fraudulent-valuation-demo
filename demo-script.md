@@ -1,642 +1,509 @@
-# Mismarking Detection on Neo4j — 25-minute Walkthrough
+# Fraudulent valuation — from weak signals to read-across
+## 25-minute executive walkthrough
 
-**Audience**: senior operational-risk managers (RISK ORM), experts in IPV, P&L attribution,
-controls and read-across — new to graphs. Explain nothing about the business;
-explain everything about how to read the screen.
+**Audience**: senior operational-risk managers (RISK ORM) — experts in IPV, P&L
+attribution, controls and read-across, new to graphs. Explain nothing about the
+business; explain everything about how to read the screen.
 
-**The one-sentence thesis** (say it twice — at the start and at the end):
-> **The graph does not detect fraud. It detects the conjunction of weak signals that
-> fraud leaves behind — a human establishes intent.**
+**The thesis** (say it twice — opening and close, verbatim):
+> **"The graph does not detect fraud. It detects the shape fraud leaves behind. A human establishes intent."**
 
-Two capabilities decide the deal, and each has its own act:
-- **Read-across** (Act 3–4): abstract one confirmed case into an instrument-agnostic
-  pattern and run it across the whole population.
-- **Early detection** (Act 4): partial matches and predicted links *before* the
-  pattern completes.
+One position (**POS-TP**), one thread, five acts. Two capabilities decide the
+deal: **read-across** (one confirmed case becomes an instrument-agnostic pattern
+run against the whole population) and **early detection** (partial matches while
+the shape is still forming).
+
+**Vocabulary**: conjunction, read-across, chronology, watchlist, similarity,
+signal. The Discovery tab and the Technical toggle exist for technical audiences
+only — see the appendix; they never appear in the executive thread.
 
 ---
 
 ## Prerequisites (before the audience arrives)
 
 ```bash
-make data          # one-time: downloads & caches OSBAP/FITRS/FRED, generates the layers
-cd app && npm install && npm run dev    # http://localhost:5173
+make data          # one-time: downloads & caches public data, generates the layers
+make explain       # pre-generates the AI-companion explanations (EN + FR)
+cd app && npm install && npm run dev
 ```
 
-(Vite picks the next free port — 5174, 5175… — if other dev servers are running;
-check the terminal line before opening the browser tab you'll present from.)
+Vite prints the port (other demos may hold 5173/5174 — this app usually lands on
+**5175**; check the title bar says "Mismarking"). `inputs/.env` holds the Neo4j
+credentials and the Gemini key (`make env` derives `.env` and `app/.env`).
 
-`inputs/.env` holds the Neo4j credentials and the Gemini key (`make env` derives
-`.env` and `app/.env`). The **flow is Explore → Policy → S1 → S2 → S3 → S4**: the
-Policy step is where the bank's control framework is formalised and the gaps are
-computed — **S1 stays locked until "Compute governance gaps" has run once** in the
-session. Every threshold is an indicative placeholder (per-rule provenance with
-verified public-source quotes: `docs/rules-provenance.md`); load the customer's own
-values before the demo if they sent them — the panel exists so you can change them
-live when asked.
+Every threshold in the Policy step is an indicative placeholder — per-rule
+provenance with verified public-source quotes in `docs/rules-provenance.md`.
+Load the customer's own values beforehand if they sent them.
 
-Run `make explain` after `make data` (and again after changing Policy defaults —
-the cache key includes the active parameters): it pre-generates the AI-companion
-explanations for the whole scripted path, EN and FR, so every Explain click during
-the demo is instant and marked "pre-generated". Off-script clicks fall back to a
-live Gemini call; if that fails the panel shows a one-line error and nothing else
-is affected.
+Keep the **Glossary** and **Technical** toggles OFF. Keep the Cypher audit
+drawer closed until someone asks "what did it just run?" — then never close it
+again. Start from an empty database: the ingest is part of the show.
 
-The **Glossary** toggle (top bar) is a preparation and onboarding aid — dotted
-terms with one-line definitions and a "show me in the graph" click-through. Keep it
-**OFF during the executive demo**: the audience knows the vocabulary.
-
-**The grounding answer, once for the whole demo** (someone WILL ask "is this
-hallucinating?"): the companion receives exactly what is on screen — the scene id,
-the rows the scenario query returned, the active ControlObligation parameters and
-the Cypher that produced them — and is instructed to say "not shown here" for
-anything else. Open the Cypher drawer and expand a companion entry's
-`contextSent`: the entire prompt context is auditable, like every query.
-
-Start from an **empty database** (Explore → Reset database): the ingest is part of
-the show.
-
-Timing: Act 0 ≈ 5 min · Policy ≈ 2 min · Act 1 ≈ 4 min · Act 2 ≈ 6 min · Act 3 ≈ 3 min ·
-Act 4 ≈ 5 min · Assistant ≈ 2 min. Keep the Cypher audit drawer closed until the first time someone
-asks "what did it just run?" — then never close it again.
+Timing: Act 0 ≈ 3 min · Act 1 ≈ 6 min · Act 2 ≈ 6 min · Act 3 ≈ 4 min ·
+Act 4 ≈ 5 min · wrap ≈ 1 min.
 
 ---
 
-## Act 0 — Explore: three layers, ingested live
-
-> **Tab: Explore**
-
-### 0.1 — Ingest, layer by layer
-Click the three ingest buttons in order, narrating what each layer *is*:
-
-1. **Market — real data.** ~3,000 real illiquid US corporate bonds from the public
-   TRACE panel (144A and/or <5% of days traded, alive through the 2022 rate shock),
-   ESMA's own liquidity assessments where they exist, US Treasury curves from FRED.
-   *Talking point:* "Nothing in this layer is invented. These are real bonds with
-   real prices; the 2022 rate shock is in the data because it happened."
-2. **Governance — synthetic, generated from rules.** ~100 positions, ~20 desks,
-   ~60 people, 3 years monthly. *Talking point:* "We took nine control obligations —
-   the kind your Valuation Policy already contains — and generated the *observed*
-   events from them with a per-desk compliance rate. The misses you'll see were
-   never hand-placed: the same query you'll watch running computes them."
-3. **Cases — one confirmed public case, one deliberate false positive.**
-   *Talking point:* "The true positive is a well-documented 2012 mismarking case,
-   encoded event by event from the public record — you'll see the citations in the
-   audit drawer. We shifted its clock +10 years to sit inside the demo window; every
-   event keeps its authentic date."
-
-Watch the counters fill. Point at the line "computing governance gaps (expected vs
-observed)" — that sentence is the product.
-
-### 0.2 — One position, revealed one hop at a time
-Select **POS-TP**. Add the instrument, the desk, the owner. Add the price chart:
-trader marks vs dealer midpoints, drifting apart through Q1.
-*Talking point:* "Today this reconstruction is a week of manual work across five
-systems — marks, IPV, P&L, approvals, committee minutes. Here it's one graph, and
-I'm choosing to reveal it one hop at a time. We never open on the full graph;
-neither should your analysts."
-
-Add the signals one at a time: PnL signals… price overrides… methodology changes…
-IPV reviews… governance gaps. *Talking point:* "Watch the shape form. Every single
-node you just saw is, on its own, below threshold somewhere."
-
-**The node inspector, once for the whole demo:** click any node, in any graph view
-(here, S1, S3, the Assistant's answers). A panel opens with the node's properties,
-its relationship summary (`← ON_POSITION × 47`, `→ OVERRIDDEN_BY × 12`…), and —
-for case events — the public-record citation in a "Source:" box. The lookup runs
-through the same audited query path as everything else. Where the node is
-position-anchored, the inspector offers **Open in Explore →**; on desks, rules,
-patterns or attributes it deliberately doesn't — Explore starts from a Position.
-
-**✦ Explain beat:** click the POS-TP node, then **✦ Explain** in the inspector.
-The companion panel opens with a grounded 3–5 sentence read of the node and its
-neighbourhood — toggle **FR** if the room prefers French. Point at the
-"pre-generated" badge and say the live fallback exists for anything off-script.
-
----
-
-## Policy — the bank's control framework, formalised
-
-> **Tab: Scenarios → Policy · Control framework** (the second step of the flow)
-
-Walk the nine rules. Say the honesty sentence verbatim: **"Formalisation of the
-bank's own control framework. Default values are indicative placeholders, to be
-replaced by the institution's thresholds."** Hover a **Source** label: each rule
-carries the public source it *echoes* — a regulatory requirement (CRR Art. 105),
-supervisory guidance (SR 11-7) or a public case finding (Senate PSI, SEC) — with
-the verbatim quote and link; "regulation-informed" appears only where the status
-warrants it. Never claim a threshold is regulation-derived; the full provenance
-table is `docs/rules-provenance.md`.
-
-Then the visible step: click **Compute governance gaps**. One parameterised query
-evaluates all nine rules over every position, expected vs observed, and
-materialises the gaps — the counts per rule (MET / LATE / MISSED) appear, and S1
-unlocks. *Talking point:* "The rules you just saw are data, not code. This button
-is the whole detection engine — everything after this screen only reads what it
-computed."
-
----
-
-## Act 1 — S1 Conjunction: below threshold alone, a shape together
-
-> **Tab: Scenarios → S1**
-
-**The business problem (say it before clicking):** every control function sees its
-own column — IPV sees divergence, Product Control sees unexplained P&L, MAP sees
-review calendars. Each is below its threshold. Nobody sees the row.
-
-Run the conjunction query live. POS-TP ranks first; note which *other* positions
-score high (the sloppy desks). Clicking a row now opens **the financial timeline
-first** — the investigator's native language: observed prices as candles (real
-OHLC when several trades printed) or ticks, gaps left as gaps; the model price as
-a continuous line — *the distance between line and candles is the divergence*;
-one marker per governance event; dashed vertical lines where a control came due
-and never fired; the cumulative broken-control score below; per-rule score bars
-alongside. Click a marker: date, role, trader mark / model price / IPV price
-(written on the event by the generator, never recomputed client-side), the rules
-it concerns, and "Open in graph".
-
-Then click **Show graph** — the network is one click away, not the opening shot —
-and run community detection: the community around POS-TP lights up, the rest
-greys out.
-
-*Talking point:* "This is not an anomaly score on a column. The chart is what your
-first line already reads — price against model. The graph behind it is what they
-don't have: the count of connected weak signals around one position. The community
-colouring is the same idea topologically: the pattern IS the neighbourhood."
-
-**✦ Explain beat:** click **✦ Explain** on the ranking card. The companion
-restates, from the rows alone, why the top position's mix of signals is
-informative — and what to check next. This is the moment to open the Cypher
-drawer once and show the `contextSent` expander: rows + policy parameters +
-the query, nothing else.
-
-**Objection you will get — "we already have quant tools for outlier marks."**
-Answer: "So did the bank in the public case; its VaR model had just been changed to
-say everything was fine. Quant tools score positions column by column, in isolation.
-This screen scores the *conjunction across your silos* — marks, approvals, IPV, P&L,
-org structure — which is where the 2012 case actually lived. And in Act 3 the output
-is not a score, it's a reusable pattern."
-
----
-
-## Act 2 — S2 Chronology: which control should have fired, and didn't
-
-> **Tab: Scenarios → S2** (this screen is also what the Assistant answers)
-
-**The business problem:** post-incident forensics take weeks and produce a PDF.
-Supervisors now ask for the chronology *and* the control-expectation gap on demand.
-
-Reconstruct POS-TP. The **financial timeline** opens above the chronology — the
-same component as S1, so the room has already learnt to read it: marks flat while
-the model price falls, the override markers clustering exactly where the dashed
-missed-control lines stand. Click one override marker: the popover shows the
-trader mark, the model price and the IPV price *carried by the event node itself*,
-its divergence, the rules it concerns with their status — and "Open in graph"
-opens the node in the Explore graph (or selects it in place when an NVL view is
-already on screen), flashing its chronology row on the way.
-
-Then walk the event timeline of POS-TP top to bottom — it reads like the public record because
-it is the public record: the VaR model change, the informal switch away from
-midpoints, the override series with a desk-head sign-off, the spreadsheet that
-quantified the gap and went nowhere, the quarter-end IPV that *upheld* the marks,
-the collateral disputes, the incident, the restatement.
-
-Then the expected-vs-observed table. Every row is one obligation evaluated by ONE
-parameterised query reading the thresholds off the policy nodes. Point at:
-- **R1 MISSED** — the marking-practice change had no approval at all;
-- **R5 MISSED** — the IPV review that happened *and stopped nothing* ("control
-  executed ≠ control effective — this is the row that proves the difference");
-- **R8 MISSED** — the desk head approving his own desk's overrides.
-
-Set **as-of = mid-2022 (mid-case)** and rerun: some rows flip to PENDING.
-*Talking point:* "Same query, evaluated as of any date. That's early detection, not
-hindsight: this table existed *before* the loss announcement."
-
-Open the audit drawer on the R5 row: the `sourceRef` cites the Senate report page.
-*Talking point:* "Every claim on this screen is one click from its query and, for the
-case, one click from the public record."
-
-**✦ Explain beat:** click the small **✦ Explain** on the R5 gap row (the review
-that upheld the marks). The companion narrates that single gap — trigger, SLA,
-what was observed instead — in strict chronological order with event ids. If a
-francophone risk manager is in the room, flip **FR** and click again: same
-grounding, same citation discipline.
-
----
-
-## Act 3 — S3 Abstraction: the pattern is a template, not a lookup
-
-> **Tab: Scenarios → S3**
-
-**The business problem:** read-across today means an analyst re-reading incident
-reports and manually listing 'books like this one'. It doesn't scale and it anchors
-on instrument identity.
-
-Create the Pattern live from the confirmed incident. Show what it contains — and
-what it doesn't: *no instrument name, no desk, no dates, no people.* Only risk
-attributes (illiquid, dealer-quoted, long-dated) and governance-gap classes (no
-pre-approval, unresolved IPV divergence, recurring unescalated overrides…).
-
-*Talking point:* "This is the read-across you already do in your head, made
-executable. The pattern matches *attributes*, never instrument fields — that's a
-design rule in the model, not a convention."
-
-**✦ Explain beat:** click **✦ Explain** on the pattern card. The companion
-describes the template from its REQUIRES list only — and, because instrument
-identity is not in its context, it *cannot* name the underlying book. That absence
-is itself the demonstration.
-
----
-
-## Act 4 — S4 Read-across: the whole population, ranked; the false positive, exonerated
-
-> **Tab: Scenarios → S4**
-
-**The business problem:** after every public incident the question is "do we have
-one?" — and the honest answer today is "give us three weeks per portfolio."
-
-Run the pattern against all ~100 positions. Read the screen:
-- **Exact matches** at 1.0 — the confirmed case matches itself (sanity check, say so).
-- **Partial matches ranked** — "score = satisfied requirements / total. 5/7 today is
-  a case file *before* the loss, not after. That is the early-detection story."
-- **📈 timeline on any match row** — expand the financial timeline in place: for a
-  true near-miss you see the price story forming; for the false positive you see
-  prices tracking the model and only three dashed lines (R2, R4, R6 — all
-  process-lateness, no price story). The chart is the fastest exoneration.
-- **✦ Explain beat:** click the small **✦ Explain** on the POS-FP match row
-  *before* jumping to its chronology: the companion reads the score from the
-  satisfied/missing lists — which conditions matched, which did not — and says
-  what to audit next. Then follow its advice by clicking through:
-- **POS-FP near the top.** Click it → the app jumps back to S2 with its chronology:
-  methodology change *after* the 2022 rate shock, committee-approved in advance,
-  IPV done (late), P&L explained (late), MAP review after the regime break.
-  *Talking point:* "The shape matched — and the graph shows you the controls that
-  DID happen, in one click. The tool doesn't accuse; it assembles both the signals
-  and the exculpatory evidence. A human closes the case. That's the design."
-
-**Objection — "so it alerts on everything."**
-Answer: "Nothing here is an alert. It's a ranked match against a pattern *you*
-authored, with *your* policy parameters — edit the divergence threshold to 100 bps
-right now (Policy panel) and watch the ranking change without regenerating anything.
-The false positive is in the demo on purpose: the cost of a match is one click of
-review, not an investigation."
-
-Widen the pattern live (add a REQUIRES, e.g. issuer sector) and rerun.
-*Talking point:* "Pattern size is not self-censored — you can make it as broad or as
-narrow as your risk appetite, live, in front of the committee."
-
-Then the predicted links: "we removed six known position-attribute links at
-generation time; the similarity algorithm recovers most of them — it says so on
-screen. **Held-out ground truth, not circular confirmation.**"
-
-**Objection — "link prediction proving what you planted is circular."**
-Answer: "Correct — which is why the screen only claims recovery of links that exist
-in reality and were *hidden from the algorithm*. In production you'd do the same
-with a temporal split: train on last year, validate on what this year revealed. The
-demo's honesty about this is deliberate: if a vendor shows you link prediction
-without a holdout, ask them this question."
-
----
-
-## Assistant — the chronology, in natural language
-
-> **Tab: Assistant**
-
-Type (or click the chip):
-
-```
-Reconstruct what happened to POS-TP, in order, and tell me which control should have fired.
-```
-
-The model composes only typed tools over the same query functions the tabs use — no
-free-form text-to-Cypher — and every statement it triggers lands in the audit drawer.
-Under the answer, flip the **graph / table** toggle: the same subgraph the tools
-returned, in the scenarios' colours with the timeline pinned left-to-right in event
-time — or sortable grids whose event ids jump straight into Explore's node
-inspector. Clicking a node in the answer graph inspects it in place (same inspector
-as everywhere else); its **Open in Explore →** button does the jump when the node is
-position-anchored. The suggestion chips never disappear: the one you clicked is
-replaced by a contextual follow-up, so the conversation path is always one click
-away.
-*Talking point:* "This was one of your validation criteria: a natural-language,
-chronological investigation. Note that it answers with control obligation IDs from
-your own policy, and that the drawer shows exactly what it ran — the assistant has
-no private access path."
-
-Follow-up if time: `Why is POS-FP not an incident?`
-
----
-
-## Wrap-up — why this matters
-
-| Layer | What it does | What it cannot do alone |
-|---|---|---|
-| Your quant/IPV tooling | scores marks column by column | see the conjunction across silos |
-| This graph | connects marks, controls, approvals, people, time; abstracts one case into a population-wide, parameterised pattern | establish intent |
-
-Close with the thesis, third time: **the graph detects the conjunction of weak
-signals fraud leaves behind; a human establishes intent.**
-
----
-
-## Objections cheat-sheet (compressed)
-
-1. **Circular link prediction** → held-out ground truth on screen; temporal splits in production; distrust anyone who shows link prediction without a holdout.
-2. **"We already have quant tools"** → they score columns per position; the value here is cross-silo conjunction + executable read-across + on-demand chronology with an audit trail. Complement, not replacement.
-3. **"It alerts on everything"** → no alerts: ranked matches against patterns you author with your policy's parameters, editable live; the deliberate false positive shows the cost of a match is one click of exculpatory review.
-4. *(bonus)* **"The 2012 case is derivatives, we're bonds"** → the pattern never contains instrument identity — that's the point of RiskAttributes; the demo runs it over a real bond population.
-
----
-
-## Bibliography (public true positive — sources from `inputs/public_true_positive_2012.csv`)
-
-- US Senate Permanent Subcommittee on Investigations, *JPMorgan Chase Whale Trades:
-  A Case History of Derivatives Risks and Abuses*, report, 15 March 2013 — incl.
-  ch. III (risk limits), ch. IV "Hiding Losses" ($161m reported vs $593m at midpoints
-  by 16 March 2012; $512m mid-vs-used difference at 31 March; collateral disputes
-  peaking at $690m; the 10 April $6m→~$400m re-issue; the 23 March stop-trading order).
-- PSI hearing record and exhibits, 15 March 2013 — incl. exhibit 77 (OCC e-mails:
-  CIO VaR change effective 27 Jan 2012, VaR −44% to ~$57m), exhibit 1f (inaccurate
-  public statements of 13 April 2012), exhibit 1i (timeline).
-- JPMorgan Chase & Co., Form 10-Q Q2 2012 and Q3 2012; Form 8-K, 13 July 2012
-  (restatement of Q1 2012, pre-tax income overstated by $660m; SCP transfer to CIB
-  on 2 July 2012); Form 10-K 2012 (Task Force report; OCC Cease & Desist).
-- U.S. SEC, press release 2013-154, 14 August 2013 (charges against two former CIO
-  traders for fraudulent mismarking; "most aggressive end of the dealers' bid-offer
-  spread"; "desired daily loss target").
-
-**Data sources (market layer)**
-- Open Source Bond Asset Pricing — stage-1 daily TRACE panel (Enhanced + Standard +
-  144A), openbondassetpricing.com.
-- ESMA FITRS non-equity transparency full files (FULNCR…_D_…): quarterly bond
-  liquidity assessments (`<Lqdty>`), registers.esma.europa.eu.
-- FRED, U.S. Treasury constant-maturity yields (DGS series), fred.stlouisfed.org.
-
----
-
-## Video storyboard (make video)
-
-The blocks below are the machine-readable source for `make video`
-(`scripts/record_demo.py` parses them; `scripts/tts.py` narrates them;
-`scripts/assemble_video.py` cuts `dist/demo.mp4`). Each fenced `scene` block has a
-stable `id:` (the recorder maps ids to UI actions — do not rename without updating
-`record_demo.py`), an `action:` line documenting what the recorder does on screen,
-and a `narration:` of 2–4 presenter-voice sentences. English only. Edit narration
-freely; re-run `make video` (audio is cached by text hash).
+## Act 0 — Data: three layers, live (≈ 3 min)
+
+> **Tab: Explore.** Reset, then ingest market → governance → cases; one schema
+> peek on the market layer. No graph exploration here — the thread starts at the
+> Policy step.
+
+**Talking points.** Layer 1 is real: ~3,000 illiquid US corporate bonds from the
+public TRACE panel, ESMA's own liquidity assessments, Treasury curves — the 2022
+rate shock is in the data because it happened. Layer 2 is synthetic governance
+generated FROM nine control obligations with a per-desk compliance rate — the
+misses are computed, never hand-placed. Layer 3 holds two cases: a
+well-documented public 2012 mismarking case encoded event by event from the
+public record (clock shifted +10 years; every event keeps its authentic date and
+citation), and one deliberate false positive whose controls worked.
+
+**On screen.** The three layer cards filling, node counters climbing, the line
+"computing governance gaps (expected vs observed)" — that line is the product.
+Then the eye icon on the market card: the layer's labels and relationships from
+a live query, plus five real rows.
 
 ```scene
 id: intro
-action: Explore tab on an empty database (the recorder resets it first).
-narration: The graph does not detect fraud. It detects the conjunction of weak
-  signals that fraud leaves behind, and a human establishes intent. Over the next
-  few minutes we bootstrap this demo from an empty database and follow one
-  confirmed mismarking case end to end.
+before: dev server up, database loaded from a previous run.
+actions: Explore tab; click Reset database; wait for "database emptied".
+shot: the empty Explore tab, three ingest cards armed.
+narration: The graph does not detect fraud. It detects the shape fraud leaves
+  behind, and a human establishes intent. We start from an empty database and
+  follow one confirmed mismarking case end to end.
 ```
 
 ```scene
 id: ingest-market
-action: Click Ingest on layer 1 · Market; wait for "Loaded".
+before: empty database.
+actions: click Ingest on 1 · Market; wait for "Loaded ✓" (fast-forwarded).
+shot: the market card loading, counters climbing.
 narration: The first layer is real public data. Three thousand illiquid US
-  corporate bonds from the public TRACE panel, ESMA's own liquidity assessments,
-  and Treasury curves for the proxy methodology. Nothing in this layer is
-  invented, and the twenty-twenty-two rate shock is in the data because it
-  happened.
+  corporate bonds with their real daily prices, the regulator's own liquidity
+  assessments, Treasury curves. The twenty-twenty-two rate shock is in the data
+  because it happened.
 ```
 
 ```scene
 id: ingest-governance
-action: Click Ingest on layer 2 · Governance; wait for "Loaded".
-narration: The second layer is synthetic governance, generated from rules. Nine
-  control obligations drive the creation of reviews, approvals and escalations
-  with a compliance rate per desk. The gaps you will see were never hand-placed;
-  the same query the app runs computes them, expected versus observed.
+before: market loaded.
+actions: click Ingest on 2 · Governance; wait for "Loaded ✓" (fast-forwarded).
+shot: the governance card loading.
+narration: The second layer is synthetic governance, generated from nine control
+  obligations with a compliance rate per desk. The gaps you will see are computed
+  by a query, never hand-placed.
 ```
 
 ```scene
 id: ingest-cases
-action: Click Ingest on layer 3 · Cases; wait for "Loaded".
-narration: The third layer holds two cases. A confirmed public mismarking case
-  from twenty-twelve, encoded event by event from the public record with its
-  citations, and one deliberate false positive whose controls actually worked.
-  The clock is shifted ten years so everything sits on the same demo timeline.
+before: governance loaded.
+actions: click Ingest on 3 · Cases; wait for "Loaded ✓" (fast-forwarded).
+shot: the cases card loading; the gap-computation line visible.
+narration: The third layer holds two cases. A public mismarking case from
+  twenty-twelve, encoded event by event with its citations, and one deliberate
+  false positive whose controls actually worked. Every date is authentic, shifted
+  ten years onto the demo clock.
 ```
 
 ```scene
 id: schema-peek
-action: Click the eye on the governance layer card; popover with the layer mini-schema + 5 live sample rows.
-narration: Every layer card carries an eye. One click opens a live peek at what
-  was just loaded: the labels, how they relate, and five real rows sampled
-  straight from the graph — the same audited query path as everything else. This
-  is the map an analyst gets before any scenario runs.
+before: all three layers loaded.
+actions: click the eye on 1 · Market; wait for the mini-schema and the sample table.
+shot: the popover — labels, relationships, five live rows.
+narration: Every layer card carries an eye: what was just loaded, as a live
+  query. The labels, how they relate, and five real rows straight from the
+  graph. This is the map an analyst gets before anything runs.
 ```
 
-```scene
-id: explore-position
-action: Select POS-TP; steps 1, 2, 3 — position, structure, price vs proxy chart.
-narration: We start from one position, never from the full graph. One click adds
-  its instrument, desk, owner and valuation methodology. The chart shows trader
-  marks drifting away from dealer midpoints through the first quarter — that gap
-  is the story, and today reconstructing it takes days across five systems.
-```
+---
 
-```scene
-id: explore-signals
-action: Add the five signal families one click at a time.
-narration: Now we add the signals one family at a time. P and L signals, price
-  overrides, methodology changes, IPV reviews, and the computed governance gaps.
-  Watch the shape form. Every single node you see is, on its own, below threshold
-  somewhere.
-```
+## Act 1 — Policy & conjunction (≈ 6 min)
+
+> **Tab: Scenarios → Policy · Control framework**, then **S1 · Conjunction**.
+
+### 1.1 The Policy step
+
+**Say verbatim:**
+> **"These rules formalise your own governance. The defaults are indicative — you plug in your thresholds. That is what this panel is for."**
+
+**Talking points.** Nine rules, every parameter editable live. Hover a **Source**
+label: each rule carries the public text it echoes — a regulatory requirement,
+supervisory guidance, or a public case finding — quoted and linked. Nothing here
+claims a threshold came from regulation; the numbers are the institution's to
+set. Then the visible step: **Compute governance gaps** — one parameterised
+query, all nine rules, every position, expected vs observed; the counts land as
+MET / LATE / MISSED per rule, and S1 unlocks.
+
+**On screen.** The nine rule cards with Source labels; then the counts table.
 
 ```scene
 id: policy-framework
-action: Scenarios → Policy; the nine rules with editable placeholders and Source labels.
-narration: Before any detection, the policy. These nine rules formalise the bank's
-  own control framework — every threshold an indicative placeholder, to be replaced
-  by the institution's values. Each rule carries its provenance: the public
-  requirement, guidance or case finding it echoes, quoted and linked. Never a claim
-  that a number came from regulation.
+before: layers loaded; Scenarios opens on the Policy step.
+actions: Scenarios tab; frame the nine rule cards with their Source labels.
+shot: the policy grid, provenance labels visible.
+narration: Before any detection, the policy. These nine rules formalise the
+  bank's own governance — every threshold an indicative placeholder, each rule
+  carrying the public source it echoes, quoted and linked. You plug in your
+  thresholds; that is what this panel is for.
 ```
 
 ```scene
 id: policy-compute
-action: Click Compute governance gaps; per-rule MET/LATE/MISSED counts appear; S1 unlocks.
-narration: This button is the detection engine. One parameterised query evaluates
-  all nine obligations over every position, expected versus observed, reading the
-  thresholds live off the policy nodes — and materialises the gaps. Met, late,
-  missed, counted per rule. Everything after this screen only reads what it just
+before: the nine rules on screen.
+actions: click Compute governance gaps; wait for the per-rule counts table.
+shot: the MET / LATE / MISSED counts per rule; S1 unlocked.
+narration: This button is the detection engine. One query evaluates all nine
+  obligations over every position, expected versus observed, and counts met,
+  late, missed per rule. Everything after this screen only reads what it just
   computed.
 ```
 
+### 1.2 S1 — the conjunction
+
+**Say verbatim:**
+> **"Each signal on its own is below threshold. Connected, they have a shape."**
+
+**Talking points.** Every control function sees one column — IPV sees
+divergence, Product Control sees unexplained P&L, MAP sees review calendars —
+and none of them fires alone. One query counts what co-occurs around every
+position; the confirmed case tops the ranking by a factor of six. Clicking the
+row opens the **financial timeline first** — the investigator's native language:
+real prices as candles or ticks (gaps stay gaps), the model price as a line, one
+▼ marker per governance event, dashed verticals where a control came due and
+never fired, the cumulative broken-control score below. Then **Show graph**: the
+network behind the chart, with the conjunction itself coloured — the position,
+the signals that scored it, the gaps' trigger events and the people who touched
+them, straight from the same query family — and everything around it grey.
+
+**On screen.** The ranked table (POS-TP at 152 vs 24 for the runner-up), the
+timeline with the marker wall, the per-rule score bars; then the coloured
+conjunction inside its grey neighbourhood.
+
 ```scene
 id: s1-conjunction
-action: Scenarios → S1 → Run the conjunction query; the top position's FINANCIAL timeline opens first.
-narration: Scenario one asks where weak signals cluster, and the confirmed case
-  tops the ranking by a factor of six. What opens first is the investigator's
-  native language: the price. Trader marks hold firm while the model price falls
-  away — that distance is the divergence — and every dashed line is a control that
-  came due and never fired.
+before: gaps computed (S1 unlocked).
+actions: open S1; click Run the conjunction query; the top row's financial timeline renders.
+shot: ranked table left, POS-TP timeline right — markers, dashed gaps, score bars.
+narration: One query counts what co-occurs around every position, and the
+  confirmed case tops the ranking by a factor of six. Each signal on its own is
+  below threshold. Connected, they have a shape — and the first view of that
+  shape is the price: marks holding firm while the model falls away, under a
+  wall of controls that came due and never fired.
 ```
 
 ```scene
-id: s1-community
-action: Click Show graph, then run GDS Louvain; the position's community coloured, the rest greyed.
-narration: The network is one click away, never the opening shot. And community
-  detection makes the same point topologically: the coloured cluster is the
-  neighbourhood of the suspect position, everything grey is the rest of the book.
-  The pattern is not a score on a column — the pattern is the neighbourhood
-  itself.
+id: s1-graph
+before: S1 run, POS-TP selected, timeline on screen.
+actions: click Show graph; wait for the network view.
+shot: the conjunction coloured, the rest of the neighbourhood grey.
+narration: One click behind the chart sits the network. Coloured: the
+  conjunction itself — the position, its signals, the gaps' triggers, the people
+  who touched them. Grey: everything around it. Same evidence as the ranking,
+  one query, nothing else.
 ```
+
+---
+
+## Act 2 — Chronology: which control should have fired (≈ 6 min)
+
+> **Tab: Scenarios → S2 · Chronology.** Timeline + table, one Explain click on a
+> gap, then the Assistant question.
+
+**Say verbatim, pointing at a MISSED row:**
+> **"The policy prescribes a control at this point. No control event exists."**
+
+**Say verbatim, pointing at the R5 row (the review that upheld the marks):**
+> **"The review took place and upheld the marks. A control that executes is not a control that is effective."**
+
+**Talking points.** Reconstruct POS-TP: the financial timeline on top, the event
+chronology below it — the informal switch away from midpoints, the weekly
+override series signed off by the desk head, the spreadsheet that quantified the
+gap and went nowhere, the quarter-end review that upheld the marks. Every case
+event keeps its authentic date and its public-record citation (audit drawer).
+The expected-vs-observed table is one parameterised query over the nine rules;
+set **as-of mid-2022** and rerun to show rows flipping to PENDING — early
+detection, not autopsy. Click the small **✦ Explain** on the R5 gap row: the
+companion narrates that single gap — trigger, SLA, what was observed instead —
+grounded on exactly the rows on screen (the payload is auditable in the drawer).
+Then ask the Assistant, in words: *"Reconstruct the timeline of POS-TP and tell
+me which control should have fired."* It composes typed tools over the same
+audited queries — it is not free-form text-to-Cypher — and because the question
+is about one position, the answer opens on its financial timeline.
+*(The Assistant runs last in the video cut; in the room it belongs here.)*
+
+**On screen.** Timeline + chronology + gap table; the companion panel with the
+grounded explanation; the Assistant answer with its timeline/graph/table toggle.
 
 ```scene
 id: s2-chronology
-action: S2 → Reconstruct POS-TP; financial timeline above the chronology with authentic-date badges.
-narration: Scenario two reconstructs the case in event time, under the same price
-  timeline. A risk-model change, an informal switch away from midpoints, a weekly
-  series of favourable overrides signed off by the desk head, the spreadsheet that
-  quantified the gap and went nowhere. Each event keeps its authentic date from
+before: gaps computed.
+actions: open S2; Reconstruct POS-TP; financial timeline + chronology render.
+shot: the timeline above, the event chronology below, authentic-date badges.
+narration: Scenario two reconstructs the case in event time, under the same
+  price timeline. An informal switch away from midpoints, a weekly series of
+  favourable overrides signed off by the desk head, the spreadsheet that
+  quantified the gap and went nowhere. Every event keeps its authentic date from
   the public record.
 ```
 
 ```scene
 id: s2-gaps
-action: Scroll to the expected-vs-observed table.
-narration: Below the timeline, one parameterised query evaluates all nine control
-  obligations. Rule one missed: the marking change had no approval. Rule five
-  missed: the quarter-end review happened and upheld the marks — control executed
-  is not control effective. Rule eight missed: the desk head approved his own
-  desk's overrides.
-```
-
-```scene
-id: s3-pattern
-action: S3 → Abstract the confirmed case into a :Pattern.
-narration: Scenario three abstracts the confirmed case into a pattern. Look at
-  what it contains — and what it does not. No instrument name, no desk, no dates,
-  no people. Only risk attributes and governance-gap classes. It is a template,
-  not a lookup.
-```
-
-```scene
-id: s4-readacross
-action: S4 → Run read-across; every position scored against the pattern.
-narration: Scenario four runs that template against the whole population at once.
-  The confirmed case matches itself at one hundred percent — that is the sanity
-  check. Everything between fifty and one hundred percent is the early-detection
-  story: the same shape forming on other books, before any loss.
-```
-
-```scene
-id: s4-predict
-action: GDS link prediction against the held-out links; recovery stated on screen.
-narration: The predicted links come with their own honesty check. Six real links
-  were removed from the graph at generation time, and the similarity algorithm
-  recovers most of them. That is validation against held-out ground truth, not
-  circular confirmation — and the screen says so explicitly.
-```
-
-```scene
-id: s4-false-positive
-action: Click the POS-FP match row; the app jumps to its S2 chronology.
-narration: This high-scoring match is the deliberate false positive. One click
-  opens its chronology: the methodology change was approved in advance by an
-  independent committee, IPV was done, the P and L was explained. The shape
-  matched, the governance worked, and a human closes the case. The tool does not
-  accuse; it assembles both the signals and the exculpatory evidence.
-```
-
-```scene
-id: policy-change
-action: Policy panel → set R5 divergence threshold to 100 bps → Apply → Reset.
-narration: Every threshold in those rules belongs to the policy, not to the code.
-  Here we raise the IPV divergence threshold to one hundred basis points and
-  recompute the gaps live — no data regeneration, no redeployment. And one click
-  restores the defaults.
+before: POS-TP reconstructed.
+actions: scroll to the expected-vs-observed table.
+shot: the gap table — MET, LATE, MISSED rows with due dates.
+narration: One query evaluates the nine obligations against this book. Where a
+  row reads missed: the policy prescribes a control at this point, and no
+  control event exists. And the quarter-end review is here too — it took place,
+  and upheld the marks. A control that executes is not a control that is
+  effective.
 ```
 
 ```scene
 id: explain-click
-action: Back to S2; click Explain on the expected-vs-observed card; the AI companion answers.
-narration: The AI companion explains what is on screen — and only what is on
-  screen. It receives the rows, the active policy parameters, and the Cypher that
-  produced them; nothing else. If something is not in that context, it says it is
-  not shown rather than guessing. The full payload is auditable in the Cypher
-  drawer.
-```
-
-```scene
-id: assistant-question
-action: Assistant tab → ask "Reconstruct what happened to POS-TP…" via the first chip.
-narration: The assistant answers the same investigation in natural language. It
-  composes typed tools over the same audited query functions — it is not free-form
-  text-to-Cypher. And because the question is about one position, the answer opens
-  on its financial timeline — the subgraph in event-time order and the raw tables
-  are one toggle away.
-```
-
-```scene
-id: outro
-action: Hold on the assistant answer's graph view.
-narration: One graph carried the whole story: real market data, rule-generated
-  governance, a confirmed case, read-across to the entire population, and early
-  detection with an audit trail on every claim. The graph detects the conjunction
-  of weak signals fraud leaves behind. A human establishes intent.
+before: the gap table on screen.
+actions: click ✦ Explain on the R5 gap row; the companion answers, grounded.
+shot: the companion panel narrating the single gap, the cited row flashed.
+narration: The companion explains one gap — and only from what is on screen: the
+  rows, the active thresholds, the query that produced them. If something is not
+  in that context, it says it is not shown. The full payload is in the audit
+  drawer, like every query.
 ```
 
 ---
 
-## Appendix — Discovery (technical audiences only)
+## Act 3 — Pattern: the case becomes a template (≈ 4 min)
 
-> **Not part of the executive demo or the video.** Toggle **Technical** in the top
-> bar to reveal the Discovery tab — a hood to open in a dry run or PoV, for the
-> audience that asks "and what does the graph find that we did NOT describe?".
-> Sub-header carries the whole thesis: *"Rules find what you described. Structure
-> finds what you didn't. Then structure becomes a rule."* Naming discipline: the
-> tab never says GDS, algorithms, machine learning or prediction. Everything runs
-> through the audited query path; projections are dropped after use; **Reset
-> Discovery removes every write** — nothing persists into S1–S4 unless a panel's
-> output button put it there. These are prose scenes, deliberately NOT fenced
-> `scene` blocks: the video recorder must never pick them up.
+> **Tab: Scenarios → S3 · Abstraction**, then the pattern editor (it lives with
+> the matcher in S4).
 
-### Discovery scene 1 — Approval circles
+**Say verbatim, on the pattern card:**
+> **"Everything that identifies the case is discarded, not hidden. Eleven conditions remain. That is the pattern."**
 
-Open Discovery → **Find approval circles**. Who approves whose overrides, as a
-structure: the communities of the weighted approval graph, coloured in the view,
-summarised as circle → members → desks covered. Point at the highlighted rows:
-circles containing **no independent control function**. On this dataset the CIO
-desk-head/senior-trader pair falls out on its own — no rule said "same desk";
-the structure did. Read the honesty line aloud: *"At 60 people this is visible
-by eye. At your scale it is not. Nothing here is a finding; it is a hypothesis
-for a rule."* **End on the output button**: *Propose as rule* → candidate
-**R-C1** appears in the Policy step, badged "candidate — found by structure, not
-validated", evaluated by nothing until a human promotes it.
+**Say verbatim, while editing:**
+> **"The pattern is a thing you can edit."**
 
-### Discovery scene 2 — Trajectories
+**Talking points.** One click abstracts the confirmed incident into a template:
+three risk attributes (dealer-quoted, illiquid, long-dated) plus the case's
+eight gap classes — no instrument name, no desk, no dates, no people. Then show
+it is data, not code: open S4, run the matcher once, and in the pattern editor
+remove `maturityBucket` — the scores re-rank live — and add it back. A pattern
+that can be edited is a pattern the institution can own: every new confirmed
+case adds a template, and the library grows at the cost of a row, not a rebuild.
 
-**Compare trajectories** against POS-TP. Each position's recent control history
-becomes a deterministic fingerprint — an atom (event type, rule, role, desk) per
-time band; nothing is learned, nothing is predicted; the same history shifted in
-time gives the same fingerprint, which is what makes periods comparable. Show
-the two heatmaps (reference vs neighbour) and the similarity *in words* ("0.8×
-R3 ≈91 d ago") — the point of reimplementing the published FastPath algorithm
-(inputs/fastpath_worked_example.md is the test oracle; on Aura Graph Analytics
-this is a built-in, self-managed support is announced for 2027 — reimplemented
-here so the score can be read). Point at the evaluation line: recall over the
-four held-out positions vs the chance baseline — and when it reads ≈ chance,
-say so; the shortlist is a hypothesis, not evidence. **End on the output
-button**: *Add to watchlist* → the neighbour lands in S4 with its reason.
+**On screen.** The pattern card with eleven condition chips; the editor chips
+with their × and the add-condition list; scores re-ranking on each change.
 
-### Discovery scene 3 — Peer decorrelation
+```scene
+id: s3-pattern
+before: gaps computed; the confirmed incident in the graph.
+actions: open S3; click Abstract the confirmed case; the pattern renders as chips + graph.
+shot: the eleven conditions — three attributes, eight gap classes; the pattern as a node.
+narration: One click abstracts the confirmed case into a template. Everything
+  that identifies it is discarded, not hidden — no instrument, no desk, no
+  dates, no people. Eleven conditions remain: three risk attributes and eight
+  classes of missed control. That is the pattern.
+```
 
-**Compute peer correlations**. Weekly trader marks against the peer group, in
-the same graph as the approvals — "your quants compute this already; what is new
-is that the signal sits next to the controls, so it can be one condition among
-the others." Exactly two books decorrelate: POS-TP (flat marks that never
-tracked peers — the signal fires months before any control noticed) and POS-FP
-(frozen at the stale model through the 2022 shock). **End on the output
-buttons**: *Add as rule R10* → the same gap query immediately renders the
-verdicts — **TP MISSED, FP MET** (its pre-approved methodology change explains
-the decorrelation; the marks re-correlate right after) — and *Use behaviour
-clusters as attributes* → market-derived, instrument-agnostic peer groups S3/S4
-can match on. Then click **Reset Discovery** and show S1–S4 unchanged.
+---
+
+## Act 4 — Read-across: the whole population, one query (≈ 5 min)
+
+> **Tab: Scenarios → S4 · Read-across.**
+
+**Say verbatim, on the ranked matches:**
+> **"Nine of eleven is a position worth a look. This one matched on shape; its controls happened — a human closes it."**
+
+**Talking points.** The template runs against every position at once. The
+confirmed case matches itself at 100% — the sanity check, say so. Everything
+between 50% and 100% is the early-detection story: the same shape forming on
+other books, before any loss. Click the high-scoring **POS-FP** row: the app
+jumps to its chronology — methodology change approved in advance by an
+independent committee, IPV done, P&L explained. The shape matched; the
+governance worked; the tool assembled both the signals and the exculpatory
+evidence. Back in S4, work the structural condition — the same-desk-approval
+gap class, part of the default pattern: **drop it and the match set widens;
+restore it and the set tightens** around the books where the structure itself is
+broken. Pattern size is the institution's choice, not a system limit. If Discovery has been used in a
+dry run, its watchlist shows here as a read-only receiver, each row carrying its
+provenance. One line if asked: *structure-driven analysis lives under the
+Technical toggle.*
+
+**On screen.** The ranked match table with satisfied/missing chips; POS-FP's
+exculpatory chronology; the editor adding the R8 gap class; the list shrinking.
+
+```scene
+id: s4-readacross
+before: the pattern exists.
+actions: open S4; click Run read-across; every position scored against the template.
+shot: exact match at 100%, partial matches ranked below with satisfied/missing chips.
+narration: The template runs against the whole population at once. The confirmed
+  case matches itself at one hundred percent — that is the sanity check. Every
+  partial match below it is the same shape forming on another book, before any
+  loss.
+```
+
+```scene
+id: s4-false-positive
+before: the ranked matches on screen.
+actions: click the POS-FP row; the app jumps to its S2 chronology; Reconstruct.
+shot: POS-FP's timeline and gap table — approvals present, reviews done.
+narration: This high match is the deliberate false positive. One click opens its
+  chronology: change approved in advance, review done, P and L explained. Nine of
+  eleven is a position worth a look. This one matched on shape; its controls
+  happened — a human closes it.
+```
+
+```scene
+id: s4-widen
+before: POS-FP's chronology on screen (from the previous scene).
+actions: back to S4; run read-across; in the pattern editor remove maturityBucket and re-add it; then drop the same-desk-approval gap class (the set widens) and restore it (the set tightens); the scores re-rank on every change.
+shot: the editor chips changing, the match scores re-ranking live.
+narration: The pattern is a thing you can edit. Remove a condition, the scores
+  re-rank live. Drop the same-desk-approval gap and the match set widens; put it
+  back and it tightens around the books where the structure itself is broken.
+  Every new confirmed case grows this library at the cost of a row, not a
+  rebuild.
+```
+
+---
+
+## Wrap-up (≈ 1 min)
+
+**Say verbatim:**
+> **"You could build the dashboard on any database. You could not build the read-across library anywhere else and keep it cheap to grow."**
+
+Then close on the thesis, verbatim:
+> **"The graph does not detect fraud. It detects the shape fraud leaves behind. A human establishes intent."**
+
+Every claim made in the last 25 minutes is one click from its query in the audit
+drawer, and — for the case — one click from its public-record citation.
+
+---
+
+## Objections cheat-sheet
+
+1. **"You could do this in Mongo/Postgres."** About 70% of what you saw, yes —
+   and say so: the ingest, the policy table, the per-position timeline, even the
+   per-rule gap evaluation are portable; they are queries over events. The 30%
+   that is not portable is the part that decides the deal: the pattern is a
+   **node** whose conditions are **shared attribute and gap-class nodes**, so
+   matching the whole population is adjacency, not joins that grow with every
+   new condition — and the library grows by adding a row. Rebuild that
+   elsewhere and you rebuild a graph.
+2. **"Where do the thresholds come from?"** They are indicative placeholders —
+   the Policy step exists precisely so you plug in yours. Each rule carries a
+   Source label with the public text it echoes, quoted and linked
+   (`docs/rules-provenance.md`); none claims its number came from regulation.
+   Then return the question: *what are your thresholds?* — that answer is the
+   first workshop.
+3. **"Isn't similarity on synthetic data circular?"** Partly, and the screen
+   says so. The trajectory shortlist in Discovery reports a retrieval check
+   against the population share and a held-out check with its sample size
+   stated ("too few to conclude"); where a result is ≈ chance it prints
+   *hypothesis, not evidence*. Nothing in the executive thread rests on a
+   learned score.
+4. **"We already have quant tools."** Keep them — their signals are the
+   *input*. The graph's contribution is the conjunction: marks, approvals, IPV,
+   P&L and org structure in one place, so one query can see what five silos
+   cannot. The public case had quant oversight; what was missing was the row
+   across the columns.
+5. **"So it flags everything?"** It ranked one book at 152 and the runner-up at
+   24 — and the highest-scoring match after the case is the deliberate false
+   positive, which the same screen exonerates in one click: controls present,
+   reviews done, P&L explained. The tool assembles evidence in both directions;
+   a human closes the case.
+6. **"How do you handle time?"** The rules are temporal — SLAs, windows,
+   as-of evaluation (set as-of to mid-2022 and watch rows turn PENDING). The
+   pattern is atemporal **by design** in v1: it matches shape, not sequence.
+   Sequence-aware comparison exists as trajectories under the Technical toggle,
+   for technical audiences.
+
+---
+
+## Video synopsis (make video)
+
+Executive cut, 6–7 minutes, from the scene blocks above in document order —
+no Discovery, no explainers, no glossary. The **Assistant scene runs last**
+(below), wrapped in before/try/wait-any/fast-forward as the recorder requires;
+the ingest waits and the model's tool calls are fast-forwarded with a labelled
+badge. Title card: **"Fraudulent valuation — from weak signals to read-across"**.
+Narration is 2–3 sentences per scene; audio is cached by text hash; regenerate
+with `make video` and check the contact sheet before committing.
+
+```scene
+id: assistant-question
+before: acts 0–4 recorded; companion panel closed by the recorder.
+actions: Assistant tab; click the first suggested question; tool calls fast-forwarded; wait for the answer (retry once with a typed question; fail loudly after that).
+shot: the answer opening on POS-TP's financial timeline, tables and subgraph one toggle away.
+narration: The assistant answers the same investigation in natural language,
+  composing typed tools over the same audited queries — it is not free-form
+  text-to-Cypher. Because the question is about one position, the answer opens
+  on its financial timeline.
+```
+
+```scene
+id: outro
+before: the assistant answer on screen.
+actions: hold on the answer.
+shot: the financial timeline inside the assistant's answer.
+narration: One graph carried the whole story: real market data, rule-generated
+  governance, a confirmed case, and read-across to the entire population. The
+  graph does not detect fraud. It detects the shape fraud leaves behind. A human
+  establishes intent.
+```
+
+---
+
+## Appendix — Discovery (technical audiences)
+
+> Toggle **Technical** in the top bar (off by default, never persisted). Three
+> prose scenes, deliberately without `scene` blocks — the video recorder must
+> never pick them up. Each panel carries a **"How it works"** explainer;
+> explainers open **on request only**. Every panel ends on a button that writes
+> into the main flow, shows its evaluation next to its result, and is undone by
+> **Reset Discovery**.
+
+**Scene D1 — Approval circles.** Who approves whose overrides, as a structure:
+circles of mutual sign-off, coloured in the view; circles containing no
+independent control function highlighted. On this dataset the case's closed
+desk-head/trader circle falls out unprompted. Honesty line on screen: at 60
+people this is visible by eye; at scale it is not; nothing here is a finding.
+**End on the output button**: *Propose as rule* → candidate **R-C1** in the
+Policy step, badged, evaluated by nothing until a human promotes it.
+
+**Scene D2 — Trajectories.** Each position's recent control history as a
+deterministic fingerprint — an atom (event type, rule, role, desk) per time
+band; nothing is learned; the same history shifted in time gives the same
+fingerprint. Similarity is read **in words** ("0.8× R3 gaps ≈91 d ago"), with
+two fingerprint heatmaps side by side. The evaluation line states the retrieval
+check against the population share, and the held-out check with its sample size
+("too few to conclude"). **End on the output button**: *Add to watchlist* → the
+neighbour lands in S4 with its provenance.
+
+**Scene D3 — Peer decorrelation.** Weekly trader marks against the peer group,
+in the same graph as the approvals. Five books decorrelate: the confirmed case
+(inside its override window), the false positive (at the 2022 shock), two
+explained recalibrations, one live near-miss. **End on the output buttons**:
+*Add as rule R10* — the same gap query immediately renders the verdicts, two
+MISSED, the rest MET, because R10 demands a review that *addresses* the
+divergence, not one that merely occurs — and *Use behaviour clusters as
+attributes* for S3/S4. Then click **Reset Discovery** and show S1–S4 unchanged.
+
+---
+
+## Bibliography (public case — sources exactly as cited in `inputs/public_true_positive_2012.csv`)
+
+Every number about the public case shown in the demo comes from this file, with
+its source in the `source` column. The sources cited there:
+
+- **US Senate Permanent Subcommittee on Investigations**, *JPMorgan Chase Whale
+  Trades: A Case History of Derivatives Risks and Abuses* (report + hearing
+  record + press release, March 2013) — chapters I, III, IV; findings; hearing
+  exhibits 1f, 1i, 77.
+- **SEC press release 2013-154** (charges against two former traders).
+- **JPMorgan Chase filings**: 10-Q Q2/Q3 2012, 8-K 2012, 10-K 2012 (restatement
+  and transfer disclosures).
+
+The bibliography deliberately lists nothing else: if a fact about the case is
+not in the CSV with one of these sources, it is not claimed anywhere in the demo.

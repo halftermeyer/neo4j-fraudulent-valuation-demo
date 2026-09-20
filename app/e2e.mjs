@@ -87,11 +87,11 @@ await page.waitForSelector("text=Positions ranked", { timeout: 120_000 });
 await page.waitForSelector(".position-timeline canvas", { timeout: 120_000 });
 await page.waitForTimeout(1500);
 await shot("3-s1-conjunction");
+// the network view: the conjunction coloured, its neighbourhood grey (no algorithm)
 await page.getByTestId("s1-show-graph").click();
 await page.waitForSelector(".s1-graph .graph-canvas", { timeout: 60_000 });
-await btn(/Louvain/).click();
-await page.waitForSelector("text=Louvain found", { timeout: 300_000 });
-await shot("3b-s1-community");
+await page.waitForTimeout(2000);
+await shot("3b-s1-graph");
 
 await btn(/S2 · Chronology/).click();
 await btn("Reconstruct").click();
@@ -113,9 +113,7 @@ await shot("5-s3-pattern");
 
 await btn(/S4 · Read-across/).click();
 await btn("Run read-across").click();
-await page.waitForSelector("text=1.00", { timeout: 120_000 });
-await btn(/predict held-out links/).click();
-await page.waitForSelector("text=held-out", { timeout: 300_000 });
+await page.waitForSelector("text=100%", { timeout: 120_000 });
 await shot("6-s4-readacross");
 
 // ── 4. Assistant (live Gemini — tolerate failure, report it) ──

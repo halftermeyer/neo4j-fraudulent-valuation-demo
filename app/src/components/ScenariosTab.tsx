@@ -16,22 +16,18 @@ import {
 import {
   addRequires,
   chronologyChain,
+  conjunctionMembers,
   createPatternFromIncident,
-  fetchHoldout,
   getPattern,
   listRequireCandidates,
   positionNeighborhood,
-  predictHeldOutLinks,
   removeRequires,
-  runCommunityDetection,
   runConjunction,
   scoreReadAcross,
   type ChainRow,
   type ConjunctionRow,
-  type HoldoutLink,
   type Neighborhood,
   type PatternInfo,
-  type PredictedLink,
   type ReadAcrossRow,
   type RequireCandidate,
 } from "../lib/scenarioQueries";
@@ -80,13 +76,11 @@ function eventDetail(e: TimelineEvent): string | null {
 
 function neighborhoodToGraph(
   nb: Neighborhood,
-  highlightCommunity: number | null,
+  conjunction: Set<string> | null, // coloured = in the conjunction; grey = around it
 ): { nodes: GNode[]; rels: GRel[] } {
   const nodes = nb.nodes.map((n) => {
     const label = n.labels.find((l) => l !== "Event") ?? n.labels[0];
-    const grey =
-      highlightCommunity !== null &&
-      (n.communityId === null || n.communityId !== highlightCommunity);
+    const grey = conjunction !== null && !conjunction.has(n.id);
     return {
       id: n.id,
       label,
@@ -108,9 +102,10 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   const [runCypher, setRunCypher] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [nb, setNb] = useState<Neighborhood | null>(null);
-  const [community, setCommunity] = useState<number | null>(null);
+  // the conjunction subgraph, derived from the SAME evidence the ranking counts
+  // (pure Cypher, no algorithm): coloured nodes; the rest of the neighbourhood grey
+  const [conjunction, setConjunction] = useState<Set<string> | null>(null);
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState("");
   // a conjunction opens on the FINANCIAL timeline (SME review batch 2);
   // the network is one explicit toggle away
   const [showGraph, setShowGraph] = useState(false);
@@ -125,7 +120,7 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
       setSelected(r[0]?.positionId ?? null);
       setShowGraph(false);
       setNb(null);
-      setCommunity(null);
+      setConjunction(null);
     } finally {
       setBusy(false);
     }
@@ -135,34 +130,20 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
     setSelected(id);
     setShowGraph(false);
     setNb(null);
-    setCommunity(null);
+    setConjunction(null);
     setTlControls([]);
   };
 
   const toggleGraph = async () => {
     const next = !showGraph;
     setShowGraph(next);
-    if (next && selected && !nb) setNb(await positionNeighborhood(selected));
-  };
-
-  const detect = async () => {
-    if (!selected) return;
-    setBusy(true);
-    try {
-      const { communityCount } = await runCommunityDetection();
-      const fresh = await positionNeighborhood(selected);
-      setNb(fresh);
-      const mine = fresh.nodes.find((n) => n.id === selected)?.communityId ?? null;
-      setCommunity(mine);
-      setNote(
-        `Louvain found ${communityCount} communities; the coloured one is the community of ${selected} — the community IS the pattern, the grey graph is everything it is not.`,
-      );
-    } finally {
-      setBusy(false);
+    if (next && selected && !nb) {
+      setNb(await positionNeighborhood(selected));
+      setConjunction(await conjunctionMembers(selected));
     }
   };
 
-  const graph = useMemo(() => (nb ? neighborhoodToGraph(nb, community) : null), [nb, community]);
+  const graph = useMemo(() => (nb ? neighborhoodToGraph(nb, conjunction) : null), [nb, conjunction]);
 
   return (
     <>
@@ -180,16 +161,6 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
         <button className="demo-btn" data-testid="s1-run" disabled={busy} onClick={run}>
           Run the conjunction query
         </button>
-        <button
-          className="demo-btn secondary"
-          data-testid="s1-louvain"
-          disabled={busy || !selected || !showGraph}
-          onClick={detect}
-          title={showGraph ? undefined : "Show the graph first — Louvain colours the network view"}
-        >
-          GDS · Louvain communities
-        </button>
-        {note && <span className="hint">{note}</span>}
       </div>
       {rows.length > 0 && (
         <div className="s1-layout">
@@ -287,6 +258,11 @@ function S1({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
               </div>
               {showGraph && graph && (
                 <>
+                  <p className="hint">
+                    Coloured: the conjunction itself — the position, the signals that scored it,
+                    the gaps' trigger events and the people who touched them (same evidence the
+                    ranking counts, one query). Grey: the rest of its neighbourhood.
+                  </p>
                   <GraphView height={480} nodes={graph.nodes} onNodeClick={() => {}} rels={graph.rels} />
                   <Legend />
                 </>
@@ -309,7 +285,7 @@ function Legend() {
     ["Approval", TYPE_COLORS.Approval],
     ["GovernanceGap", TYPE_COLORS.GovernanceGap],
     ["Person", TYPE_COLORS.Person],
-    ["outside community", GREY],
+    ["outside the conjunction", GREY],
   ];
   return (
     <div className="legend">
@@ -477,6 +453,7 @@ function S2({ positionId, setPositionId }: { positionId: string; setPositionId: 
                         <span className={`pill pill-${c.status.toLowerCase()}`}>{c.status}</span>
                         {c.status !== "MET" && (
                           <ExplainButton
+                            testId={`explain-gap-${c.ruleId}`}
                             payload={() => ({
                               scene: "s2-gap",
                               selectionId: `${positionId}:${c.ruleId}`,
@@ -635,8 +612,6 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   const [pattern, setPattern] = useState<PatternInfo | null>(null);
   const [candidates, setCandidates] = useState<RequireCandidate[]>([]);
   const [addSel, setAddSel] = useState("");
-  const [pred, setPred] = useState<PredictedLink[] | null>(null);
-  const [holdout, setHoldout] = useState<HoldoutLink[]>([]);
   const [busy, setBusy] = useState(false);
   const [timelineFor, setTimelineFor] = useState<string | null>(null);
 
@@ -683,25 +658,6 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
     }
   };
 
-  const predict = async () => {
-    setBusy(true);
-    try {
-      setHoldout(await fetchHoldout());
-      setPred(await predictHeldOutLinks());
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const recovered = useMemo(() => {
-    if (!pred) return 0;
-    return holdout.filter((h) =>
-      pred.some(
-        (p) => p.positionId === h.from && p.candidates.some((c) => c.attributeId === h.to),
-      ),
-    ).length;
-  }, [pred, holdout]);
-
   return (
     <>
       <div className="business-problem">
@@ -717,12 +673,18 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
       {watchlist.length > 0 && (
         <div className="panel" data-testid="s4-watchlist">
           <h2>Watchlist</h2>
-          <p className="hint">Written by Discovery — each entry carries its reason; Reset Discovery removes them.</p>
+          <p className="hint">
+            Read-only receiver of Discovery outputs — every row carries its provenance; Reset
+            Discovery removes them; empty by default.
+          </p>
           <table className="data-table">
             <tbody>
               {watchlist.map((w) => (
                 <tr className="clickable" key={w.positionId} onClick={() => onOpenChronology(w.positionId)}>
                   <td><strong>{w.positionId}</strong></td>
+                  <td>
+                    <span className="pill pill-info">Discovery · {w.panel ?? "Trajectories"}</span>
+                  </td>
                   <td>{w.reason}</td>
                   <td className="hint-inline">{w.addedAt?.slice(0, 10)} · chronology →</td>
                 </tr>
@@ -734,9 +696,6 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
       <div className="btn-row">
         <button className="demo-btn" data-testid="s4-run" disabled={busy} onClick={run}>
           Run read-across
-        </button>
-        <button className="demo-btn secondary" data-testid="s4-predict" disabled={busy || rows.length === 0} onClick={predict}>
-          GDS · predict held-out links
         </button>
       </div>
 
@@ -882,48 +841,7 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
         </div>
       )}
 
-      {pred && (
-        <div className="panel">
-          <h2>Predicted links vs held-out ground truth</h2>
-          <p className="hint">
-            <strong>
-              {holdout.length} Position→RiskAttribute links were removed at generation time; the
-              similarity model recovers {recovered} of {holdout.length} in its top-3 candidates.
-            </strong>{" "}
-            This is validation against held-out ground truth — not circular confirmation of the
-            pattern.
-          </p>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Position</th>
-                <th>Missing attribute type</th>
-                <th>Top candidates (GDS node similarity)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pred.map((p) => (
-                <tr key={`${p.positionId}-${p.missingType}`}>
-                  <td>{p.positionId}</td>
-                  <td>{p.missingType}</td>
-                  <td>
-                    {p.candidates.map((c) => {
-                      const hit = holdout.some(
-                        (h) => h.from === p.positionId && h.to === c.attributeId,
-                      );
-                      return (
-                        <span className={`pill ${hit ? "pill-met" : "pill-pending"}`} key={c.attributeId}>
-                          {c.attributeId.replace("RA-", "")} ({c.score}) {hit ? "✓ held-out" : ""}
-                        </span>
-                      );
-                    })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <p className="hint">Structure-driven analysis lives under the Technical toggle.</p>
     </>
   );
 }

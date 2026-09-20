@@ -278,6 +278,7 @@ export async function addToWatchlist(positionId: string, referenceId: string, as
       `MATCH (p:Position {id: $pid})
        MERGE (w:WatchlistEntry {id: 'WL-' + $pid})
        SET w.reason = 'trajectory similar to ' + $ref + ' as of ' + $asOf,
+           w.panel = 'Trajectories', w.referencePosition = $ref, w.asOf = $asOf,
            w.addedAt = datetime()
        MERGE (w)-[:WATCHES]->(p)`,
       { pid: positionId, ref: referenceId, asOf: asOf.slice(0, 10) },
@@ -288,13 +289,15 @@ export async function addToWatchlist(positionId: string, referenceId: string, as
 export interface WatchlistRow {
   positionId: string;
   reason: string;
+  panel: string | null;
   addedAt: string;
 }
 
 export async function fetchWatchlist(): Promise<WatchlistRow[]> {
   return runQuery<WatchlistRow>(
     `MATCH (w:WatchlistEntry)-[:WATCHES]->(p:Position)
-     RETURN p.id AS positionId, w.reason AS reason, toString(w.addedAt) AS addedAt
+     RETURN p.id AS positionId, w.reason AS reason, w.panel AS panel,
+            toString(w.addedAt) AS addedAt
      ORDER BY w.addedAt DESC`,
   );
 }

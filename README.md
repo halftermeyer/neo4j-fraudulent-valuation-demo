@@ -81,17 +81,21 @@ GEMINI_API_KEY=...          # Assistant tab + LLM test
   a time: instrument, desk, owner, methodology, observed-vs-proxy price chart,
   then each signal family added one click at a time. Never opens on the full graph.
 - **Scenarios** —
-  **S1 Conjunction**: signals below threshold individually, shaped together
-  (+ Louvain community colouring);
+  **S1 Conjunction**: signals below threshold individually, shaped together —
+  the network view colours the conjunction subgraph itself (position, scoring
+  signals, gap triggers, the people who touched them; one query, no algorithm)
+  and greys the rest of the neighbourhood;
   **S2 Chronology**: event-time reconstruction over the `:NEXT` chain (QPP) and
   the parameterised expected-vs-observed gap query, with `asOf` for early
   detection — this screen is also what the Assistant answers;
   **S3 Abstraction**: build the `:Pattern` live from the confirmed incident —
   attributes + gap classes, no instrument identity;
   **S4 Read-across**: exact and partial matches ranked (score = satisfied
-  REQUIRES / total), pattern widenable live, GDS link prediction validated
-  against held-out ground truth (stated on screen), false positive one click
-  from its exculpatory chronology (or its 📈 timeline, expandable in place).
+  REQUIRES / total), pattern widenable live, false positive one click from its
+  exculpatory chronology (or its 📈 timeline, expandable in place), plus a
+  read-only **watchlist** fed by Discovery (rows carry their provenance).
+  The executive flow runs **no gds.\* procedure** (test-enforced); structure-
+  driven analysis lives under the Technical toggle.
 - **PositionTimeline** (`lightweight-charts`, pinned) — the financial view a
   conjunction opens on: daily TRACE prices as candles (real per-day OHLC when
   several trades printed) or ticks with calendar gaps kept as gaps, the

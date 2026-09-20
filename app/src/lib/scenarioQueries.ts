@@ -51,7 +51,6 @@ export interface NeighborhoodNode {
   id: string;
   labels: string[];
   caption: string;
-  communityId: number | null;
 }
 
 export interface NeighborhoodRel {
@@ -87,8 +86,7 @@ export async function positionNeighborhood(positionId: string): Promise<Neighbor
             collect(DISTINCT {f: a.id, t: b.id, ty: type(r)}) AS rels
        UNWIND ns AS n
        WITH collect(DISTINCT {id: n.id, labels: labels(n),
-                              caption: coalesce(n.name, n.role, n.id),
-                              communityId: n.communityId}) AS nodes, rels
+                              caption: coalesce(n.name, n.role, n.id)}) AS nodes, rels
        RETURN nodes, rels`,
       { id: positionId },
     ),
@@ -96,29 +94,35 @@ export async function positionNeighborhood(positionId: string): Promise<Neighbor
   return rows[0] ?? { nodes: [], rels: [] };
 }
 
-/** GDS Louvain over the governance neighbourhood — the community IS the pattern.
- *  Projection is created, written back (communityId) and dropped in one group. */
-export async function runCommunityDetection(): Promise<{ communityCount: number }> {
-  return withGroup("S1 · GDS Louvain community detection", async () => {
-    await runQuery(`CALL gds.graph.drop('s1_community', false) YIELD graphName RETURN graphName`);
-    await runQuery(
-      `CALL gds.graph.project('s1_community',
-         ['Position','Person','Desk','PriceOverride','MethodologyChange','PnLSignal','Escalation','Approval','GovernanceGap'],
-         {ON_DESK: {orientation: 'UNDIRECTED'}, OWNED_BY: {orientation: 'UNDIRECTED'},
-          OVERRIDDEN_BY: {orientation: 'UNDIRECTED'}, CHANGED_TO: {orientation: 'UNDIRECTED'},
-          GENERATED_SIGNAL: {orientation: 'UNDIRECTED'}, ESCALATED_TO: {orientation: 'UNDIRECTED'},
-          APPROVED_BY: {orientation: 'UNDIRECTED'}, PERFORMED_BY: {orientation: 'UNDIRECTED'},
-          ON_POSITION: {orientation: 'UNDIRECTED'}})
-       YIELD graphName, nodeCount, relationshipCount
-       RETURN graphName, nodeCount, relationshipCount`,
-    );
-    const res = await runQuery<{ communityCount: number }>(
-      `CALL gds.louvain.write('s1_community', {writeProperty: 'communityId'})
-       YIELD communityCount RETURN communityCount`,
-    );
-    await runQuery(`CALL gds.graph.drop('s1_community', false) YIELD graphName RETURN graphName`);
-    return { communityCount: res[0]?.communityCount ?? 0 };
-  });
+/** The CONJUNCTION as a set of node ids — derived from the same evidence the
+ *  conjunction query counts, pure Cypher, no algorithm: the position, its
+ *  counted signal events, the trigger events of its computed gaps, the gaps,
+ *  and the approvals/people attached to any of them. S1 colours these and
+ *  greys the rest of the neighbourhood. */
+export async function conjunctionMembers(positionId: string): Promise<Set<string>> {
+  const rows = await withGroup(`S1 · Conjunction members of ${positionId}`, () =>
+    runQuery<{ ids: string[] }>(
+      `MATCH (p:Position {id: $id})
+       CALL (p) {
+         MATCH (p)-[:OVERRIDDEN_BY|GENERATED_SIGNAL|CHANGED_TO]->(e) RETURN e
+         UNION
+         MATCH (g:GovernanceGap {abstract: false, positionId: p.id})-[:ON_TRIGGER]->(e:Event) RETURN e
+         UNION
+         MATCH (e:GovernanceGap {abstract: false, positionId: p.id}) RETURN e
+       }
+       WITH p, collect(DISTINCT e) AS es
+       OPTIONAL MATCH (e1)-[:PERFORMED_BY]->(x) WHERE e1 IN es
+       WITH p, es, collect(DISTINCT x) AS performers
+       OPTIONAL MATCH (e2)-[:APPROVED_BY]->(a:Approval) WHERE e2 IN es
+       WITH p, es, performers, collect(DISTINCT a) AS approvals
+       OPTIONAL MATCH (a2)-[:APPROVED_BY]->(y) WHERE a2 IN approvals
+       WITH p, es, performers, approvals, collect(DISTINCT y) AS approvers
+       RETURN [p.id] + [e IN es | e.id] + [x IN performers | x.id]
+              + [a IN approvals | a.id] + [y IN approvers | y.id] AS ids`,
+      { id: positionId },
+    ),
+  );
+  return new Set(rows[0]?.ids ?? []);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -287,49 +291,3 @@ export async function scoreReadAcross(): Promise<ReadAcrossRow[]> {
 // ── S4b: predicted links against held-out ground truth ──
 // Six Position→RiskAttribute links were REMOVED at generation time
 // (data/holdout_links.json). GDS node similarity over the Position–RiskAttribute
-// bipartite graph proposes candidates for each missing attribute type; the UI
-// marks recoveries. Validation against held-out truth — not circular confirmation.
-
-export interface PredictedLink {
-  positionId: string;
-  missingType: string;
-  candidates: { attributeId: string; score: number }[];
-}
-
-export async function predictHeldOutLinks(): Promise<PredictedLink[]> {
-  return withGroup("S4 · GDS link prediction vs held-out truth", async () => {
-    await runQuery(`CALL gds.graph.drop('s4_bipartite', false) YIELD graphName RETURN graphName`);
-    await runQuery(
-      `CALL gds.graph.project('s4_bipartite', ['Position', 'RiskAttribute'], {HAS_RISK_ATTRIBUTE: {}})
-       YIELD nodeCount RETURN nodeCount`,
-    );
-    const rows = await runQuery<PredictedLink>(
-      `CALL gds.nodeSimilarity.stream('s4_bipartite', {topK: 10})
-       YIELD node1, node2, similarity
-       WITH gds.util.asNode(node1) AS p1, gds.util.asNode(node2) AS p2, similarity
-       WHERE p1:Position AND p2:Position
-       MATCH (p2)-[:HAS_RISK_ATTRIBUTE]->(ra:RiskAttribute)
-       WHERE NOT EXISTS { MATCH (p1)-[:HAS_RISK_ATTRIBUTE]->(:RiskAttribute {type: ra.type}) }
-       WITH p1.id AS positionId, ra.type AS missingType, ra.id AS attributeId,
-            sum(similarity) AS score
-       ORDER BY positionId, missingType, score DESC
-       WITH positionId, missingType,
-            collect({attributeId: attributeId, score: round(score, 3)})[..3] AS candidates
-       RETURN positionId, missingType, candidates ORDER BY positionId`,
-    );
-    await runQuery(`CALL gds.graph.drop('s4_bipartite', false) YIELD graphName RETURN graphName`);
-    return rows;
-  });
-}
-
-export interface HoldoutLink {
-  from: string;
-  to: string;
-  type: string;
-}
-
-export async function fetchHoldout(): Promise<HoldoutLink[]> {
-  const resp = await fetch("/data/holdout_links.json");
-  if (!resp.ok) return [];
-  return resp.json();
-}
