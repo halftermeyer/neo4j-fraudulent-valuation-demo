@@ -46,6 +46,7 @@ export interface PositionTimelineData {
 
 export const TIMELINE_EVENT_LABELS = [
   "MethodologyChange", "PriceOverride", "IPVReview", "Approval", "Escalation", "MAPReview",
+  "DecorrelationSignal", // written by the Discovery peer-decorrelation panel
 ] as const;
 
 export async function fetchPositionTimeline(

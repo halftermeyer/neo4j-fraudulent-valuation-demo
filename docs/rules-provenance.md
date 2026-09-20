@@ -24,6 +24,17 @@ Every quote below was verified against the linked text on 2026-09-18 (not from m
 | **R8** Segregation of duties | "approval-chain shape" as a first-class `:RiskAttribute`; desk head approving own desk's overrides | [CRR Art. 105(2)](https://lexparency.org/eu/CRR/ART_105/) (valuation reporting lines) | "reporting lines … clear and independent of the front office" | regulatory requirement |
 | **R9** Documentary evidence | `Evidence` / `EVIDENCED_BY` in the target schema — controls must leave a trace | [CRR Art. 105(2)(a)](https://lexparency.org/eu/CRR/ART_105/) | "documented policies and procedures for the process of valuation" | regulatory requirement |
 
+## R10 — Discovery-proposed (not part of the CSV nine)
+
+| Rule | Origin | Requirement it formalises | Status |
+|---|---|---|---|
+| **R10** Peer decorrelation resolution | the **Discovery** tab's peer-decorrelation panel (structure-proposed, written by its output button; removed by Reset Discovery) | a book whose marks stop correlating with its peer group must be explained by a **pre-approved** methodology change effective around the signal, or reviewed within the SLA | **industry practice, not a rule** |
+
+R10 exists in `data/gap_query.cypher` as an inert branch: without the R10
+obligation node and the `:DecorrelationSignal` events (both Discovery-written)
+it returns nothing and the acceptance sets are untouched. When active it must
+separate the cases — POS-TP breaks it, POS-FP is MET (`tests/test_discovery.py`).
+
 ## Secondary echoes (verified, kept out of the table for one-row-per-rule)
 
 - **R5 / R3 case echo** — PSI Finding of fact 3: "supporting reviews which exposed the

@@ -28,3 +28,4 @@ dist/
 .DS_Store
 *.part
 *.tsbuildinfo
+data/holdout_gaps.json

@@ -174,6 +174,7 @@ def tool_list_positions() -> list[dict]:
 def tool_timeline(position_id: str) -> list[dict]:
     return run_cypher(
         """MATCH (e:Event {positionId: $positionId})
+        WHERE NOT e:Mark
         OPTIONAL MATCH (:Event)-[nx:NEXT]->(e)
         RETURN e.id AS id, [l IN labels(e) WHERE l <> 'Event'][0] AS label,
                toString(e.at) AS at, toString(e.sourceAt) AS sourceAt,

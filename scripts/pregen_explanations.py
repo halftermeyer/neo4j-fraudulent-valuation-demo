@@ -130,6 +130,24 @@ def gaps_of(position_id: str) -> list[dict]:
 
 
 def pattern_context() -> dict:
+    # a fresh `make load` has no :Pattern yet (S3 creates it at runtime) — create
+    # it here with the SAME statement the app runs (scenarioQueries.ts)
+    run_cypher(
+        """MATCH (inc:Incident {id: 'INC-TP'})-[:CAUSED_BY]->(p:Position)
+           MERGE (pat:Pattern {id: 'PATTERN-TP'})
+           SET pat.name = 'Mismarked illiquid book', pat.fromIncident = inc.id
+           WITH pat, p
+           CALL (pat, p) {
+             MATCH (p)-[:HAS_RISK_ATTRIBUTE]->(ra:RiskAttribute)
+             WHERE ra.type IN ['methodologyFamily', 'liquidityTier', 'maturityBucket']
+             MERGE (pat)-[:REQUIRES]->(ra)
+           }
+           CALL (pat, p) {
+             MATCH (g:GovernanceGap {abstract: false})-[:ON_POSITION]->(p)
+             MATCH (g)-[:INSTANCE_OF]->(gc:GovernanceGap {abstract: true})
+             MERGE (pat)-[:REQUIRES]->(gc)
+           }
+           RETURN pat.id AS id""")
     rows = run_cypher(
         """MATCH (pat:Pattern {id: 'PATTERN-TP'})
            OPTIONAL MATCH (pat)-[:REQUIRES]->(t)

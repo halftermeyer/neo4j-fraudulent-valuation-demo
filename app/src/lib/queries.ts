@@ -237,6 +237,7 @@ export interface Obligation {
   id: string;
   name: string;
   severity: string;
+  status: string | null; // 'candidate — …' for Discovery proposals, null for the CSV nine
   timing: string;
   slaDays: number;
   triggerEvent: string;
@@ -251,7 +252,8 @@ export interface Obligation {
 export async function listObligations(): Promise<Obligation[]> {
   const rows = await runQuery<Obligation & Record<string, unknown>>(
     `MATCH (o:ControlObligation)
-     RETURN o.id AS id, o.name AS name, o.severity AS severity, o.timing AS timing,
+     RETURN o.id AS id, o.name AS name, o.severity AS severity, o.status AS status,
+            o.timing AS timing,
             o.slaDays AS slaDays, o.triggerEvent AS triggerEvent,
             o.requiredControl AS requiredControl, o.requiredByRole AS requiredByRole,
             o.gapDefinition AS gapDefinition, o.paramsJson AS paramsJson,
@@ -328,10 +330,13 @@ export interface TimelineEvent {
 }
 
 /** Chronological reconstruction of everything that happened to a position,
- *  via the :NEXT event chain (fraud-event-sequence model). */
+ *  via the :NEXT event chain (fraud-event-sequence model). Weekly :Mark events
+ *  are market data, not chronology — the timeline chart shows them; this list
+ *  does not (they would flood it, ~50 rows per year per position). */
 export async function timeline(positionId: string): Promise<TimelineEvent[]> {
   return runQuery<TimelineEvent>(
     `MATCH (e:Event {positionId: $positionId})
+     WHERE NOT e:Mark
      OPTIONAL MATCH (prev:Event)-[nx:NEXT]->(e)
      RETURN e.id AS id, [l IN labels(e) WHERE l <> 'Event'][0] AS label,
             toString(e.at) AS at, toString(e.sourceAt) AS sourceAt,

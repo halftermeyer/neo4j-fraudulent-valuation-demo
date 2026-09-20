@@ -6,14 +6,27 @@ import CompanionPanel from "./components/CompanionPanel";
 import ExploreTab from "./components/ExploreTab";
 import QueryAuditDrawer from "./components/QueryAuditDrawer";
 import ScenariosTab from "./components/ScenariosTab";
+import DiscoveryTab from "./components/DiscoveryTab";
 import { getCompanionState, onCompanionChange, toggleCompanion } from "./lib/companion";
 import { onExploreLink } from "./lib/exploreLink";
 import { isGlossaryOn, onGlossaryChange, toggleGlossary } from "./lib/glossary";
+import { isTechModeOn, onTechModeChange, toggleTechMode } from "./lib/techMode";
 
-type TabId = "explore" | "scenarios" | "assistant";
+type TabId = "explore" | "scenarios" | "assistant" | "discovery";
 
 export default function App() {
   const [tab, setTab] = useState<TabId>("explore");
+
+  // "Technical" mode gates the Discovery tab — off by default, never persisted
+  const [tech, setTech] = useState(isTechModeOn());
+  useEffect(
+    () =>
+      onTechModeChange(() => {
+        setTech(isTechModeOn());
+        if (!isTechModeOn()) setTab((t) => (t === "discovery" ? "explore" : t));
+      }),
+    [],
+  );
   const [companionOpen, setCompanionOpen] = useState(getCompanionState().open);
 
   useEffect(
@@ -46,6 +59,14 @@ export default function App() {
             Glossary
           </button>
           <button
+            className={`header-companion-toggle ${tech ? "active" : ""}`}
+            data-testid="tech-toggle"
+            onClick={() => toggleTechMode()}
+            title="Shows the Discovery tab — for technical audiences, off by default, session only"
+          >
+            Technical
+          </button>
+          <button
             className={`header-companion-toggle ${companionOpen ? "active" : ""}`}
             onClick={() => toggleCompanion()}
           >
@@ -59,12 +80,14 @@ export default function App() {
           <Tabs.Tab id="explore">Explore</Tabs.Tab>
           <Tabs.Tab id="scenarios">Scenarios</Tabs.Tab>
           <Tabs.Tab id="assistant">Assistant</Tabs.Tab>
+          {tech && <Tabs.Tab id="discovery">Discovery</Tabs.Tab>}
         </Tabs>
       </nav>
       <main className="app-main">
         {tab === "explore" && <ExploreTab />}
         {tab === "scenarios" && <ScenariosTab />}
         {tab === "assistant" && <ChatTab />}
+        {tab === "discovery" && tech && <DiscoveryTab />}
       </main>
       <CompanionPanel />
       <QueryAuditDrawer />

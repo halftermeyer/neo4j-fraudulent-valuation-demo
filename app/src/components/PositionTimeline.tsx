@@ -42,6 +42,7 @@ const MARKER_STYLE: Record<string, { shape: "circle" | "square" | "arrowUp" | "a
   Approval: { shape: "circle", color: "#2f9e44", position: "aboveBar" },
   Escalation: { shape: "arrowDown", color: "#e8590c", position: "aboveBar" },
   MAPReview: { shape: "square", color: "#0f9960", position: "belowBar" },
+  DecorrelationSignal: { shape: "arrowDown", color: "#5f3dc4", position: "belowBar" },
 };
 
 const day = (iso: string) => iso.slice(0, 10);

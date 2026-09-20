@@ -23,7 +23,7 @@ Read `README.md` for architecture, `DATA_PLAN.md` for the validated data design,
    GovernanceGaps are always computed by it, never hand-placed.
 2. Acceptance contract: POS-TP gap set == {R1,R2,R3,R4,R5,R6,R8,R9}, POS-FP ==
    {R2,R4,R6}, both read from `inputs/*.csv` at test time. `make test` must stay
-   green after any change (12 tests incl. a live Gemini test needing
+   green after any change (23 tests incl. a live Gemini test needing
    GEMINI_API_KEY exported).
 3. `inputs/*.csv` are customer DATA — semantics are frozen (one user-approved
    edit exists: seq-6 rules_broken = R3;R4;R8).
@@ -42,7 +42,16 @@ Read `README.md` for architecture, `DATA_PLAN.md` for the validated data design,
    typed tools only (`assistantTools.ts`, mirrored by `mcp_server.py`).
 6. Companion cache keys = sha256(scene|selection|canonical params|lang), computed
    byte-identically in `companion.ts` and `scripts/pregen_explanations.py`
-   (system prompts mirrored too — keep in sync).
+   (system prompts mirrored too — keep in sync). Same mirror discipline for
+   Discovery: `scripts/fastpath.py` ↔ `app/src/lib/fastpath.ts` (oracle:
+   `inputs/fastpath_worked_example.md`), `scripts/discovery_signals.py` ↔
+   `computeSignalsFromSeries`/Cypher in `discoveryQueries.ts`, and `CREATE_R10`
+   in `tests/test_discovery.py` ↔ `addRuleR10`. Discovery writes (R-C1, R10,
+   signals, watchlist, behaviourCluster attrs, SIMILAR_TRAJECTORY/
+   CORRELATES_WITH) exist only after their buttons; Reset Discovery removes all;
+   the R10 gap-query branch is inert without the R10 node. `:Mark` events are
+   NEXT-chained but excluded from chronology lists. Discovery copy never says
+   GDS/algorithms/ML/prediction. `make test` = 23 tests.
 7. The video storyboard = fenced ```scene blocks in demo-script.md; scene ids are
    API for `scripts/record_demo.py`. Recorder rules: data-testid for our
    elements, role selectors for NDL; per-scene framing via `frame_on`; long

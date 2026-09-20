@@ -161,9 +161,15 @@ export default function PolicyPanel({ onChanged }: { onChanged: () => void }) {
               <strong>
                 {o.id} · {o.name}
               </strong>
-              <span className={`pill ${o.severity === "high" ? "pill-missed" : "pill-pending"}`}>
-                {o.severity}
-              </span>
+              {o.status?.startsWith("candidate") ? (
+                <span className="pill pill-pending" title={o.status}>
+                  {o.status}
+                </span>
+              ) : (
+                <span className={`pill ${o.severity === "high" ? "pill-missed" : "pill-pending"}`}>
+                  {o.severity}
+                </span>
+              )}
               <span className="pill pill-info">{o.timing}</span>
             </div>
             <div className="policy-card-source">

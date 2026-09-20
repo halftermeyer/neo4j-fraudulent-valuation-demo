@@ -53,5 +53,11 @@
     "source": "CRR Art. 105(2)(a)",
     "quote": "documented policies and procedures for the process of valuation",
     "url": "https://lexparency.org/eu/CRR/ART_105/"
+  },
+  "R10": {
+    "status": "industry practice, not a rule",
+    "source": "Discovery — peer decorrelation (standard desk quant practice, structure-proposed)",
+    "quote": "your quants compute this already — here it sits in the same graph as the approvals",
+    "url": "https://github.com/halftermeyer/neo4j-fraudulent-valuation-demo/blob/main/docs/rules-provenance.md"
   }
 }

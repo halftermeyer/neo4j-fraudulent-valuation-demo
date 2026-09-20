@@ -583,3 +583,60 @@ narration: One graph carried the whole story: real market data, rule-generated
   detection with an audit trail on every claim. The graph detects the conjunction
   of weak signals fraud leaves behind. A human establishes intent.
 ```
+
+---
+
+## Appendix — Discovery (technical audiences only)
+
+> **Not part of the executive demo or the video.** Toggle **Technical** in the top
+> bar to reveal the Discovery tab — a hood to open in a dry run or PoV, for the
+> audience that asks "and what does the graph find that we did NOT describe?".
+> Sub-header carries the whole thesis: *"Rules find what you described. Structure
+> finds what you didn't. Then structure becomes a rule."* Naming discipline: the
+> tab never says GDS, algorithms, machine learning or prediction. Everything runs
+> through the audited query path; projections are dropped after use; **Reset
+> Discovery removes every write** — nothing persists into S1–S4 unless a panel's
+> output button put it there. These are prose scenes, deliberately NOT fenced
+> `scene` blocks: the video recorder must never pick them up.
+
+### Discovery scene 1 — Approval circles
+
+Open Discovery → **Find approval circles**. Who approves whose overrides, as a
+structure: the communities of the weighted approval graph, coloured in the view,
+summarised as circle → members → desks covered. Point at the highlighted rows:
+circles containing **no independent control function**. On this dataset the CIO
+desk-head/senior-trader pair falls out on its own — no rule said "same desk";
+the structure did. Read the honesty line aloud: *"At 60 people this is visible
+by eye. At your scale it is not. Nothing here is a finding; it is a hypothesis
+for a rule."* **End on the output button**: *Propose as rule* → candidate
+**R-C1** appears in the Policy step, badged "candidate — found by structure, not
+validated", evaluated by nothing until a human promotes it.
+
+### Discovery scene 2 — Trajectories
+
+**Compare trajectories** against POS-TP. Each position's recent control history
+becomes a deterministic fingerprint — an atom (event type, rule, role, desk) per
+time band; nothing is learned, nothing is predicted; the same history shifted in
+time gives the same fingerprint, which is what makes periods comparable. Show
+the two heatmaps (reference vs neighbour) and the similarity *in words* ("0.8×
+R3 ≈91 d ago") — the point of reimplementing the published FastPath algorithm
+(inputs/fastpath_worked_example.md is the test oracle; on Aura Graph Analytics
+this is a built-in, self-managed support is announced for 2027 — reimplemented
+here so the score can be read). Point at the evaluation line: recall over the
+four held-out positions vs the chance baseline — and when it reads ≈ chance,
+say so; the shortlist is a hypothesis, not evidence. **End on the output
+button**: *Add to watchlist* → the neighbour lands in S4 with its reason.
+
+### Discovery scene 3 — Peer decorrelation
+
+**Compute peer correlations**. Weekly trader marks against the peer group, in
+the same graph as the approvals — "your quants compute this already; what is new
+is that the signal sits next to the controls, so it can be one condition among
+the others." Exactly two books decorrelate: POS-TP (flat marks that never
+tracked peers — the signal fires months before any control noticed) and POS-FP
+(frozen at the stale model through the 2022 shock). **End on the output
+buttons**: *Add as rule R10* → the same gap query immediately renders the
+verdicts — **TP MISSED, FP MET** (its pre-approved methodology change explains
+the decorrelation; the marks re-correlate right after) — and *Use behaviour
+clusters as attributes* → market-derived, instrument-agnostic peer groups S3/S4
+can match on. Then click **Reset Discovery** and show S1–S4 unchanged.

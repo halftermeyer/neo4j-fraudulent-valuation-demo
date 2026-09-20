@@ -272,3 +272,32 @@ RETURN o.id AS ruleId, o.name AS ruleName, o.severity AS severity,
        p.id AS positionId, x.id AS triggerEventId, x.at AS triggerAt,
        head(labels(x)) AS triggerLabel, x.at AS dueBy,
        null AS observedEventId, null AS observedAt, 'MISSED' AS status
+
+UNION ALL
+
+// ── R10 · Peer decorrelation resolution (Discovery-proposed) ─────────────────
+// "DecorrelationSignal with neither a PRE-APPROVED MethodologyChange effective
+//  around it nor an IPVReview within slaDays" — status 'industry practice, not
+//  a rule'. INERT until the Discovery panel creates both the R10 obligation and
+//  the :DecorrelationSignal events; the acceptance sets are untouched without them.
+MATCH (o:ControlObligation {id: 'R10'})
+WHERE $ruleId IS NULL OR $ruleId = o.id
+MATCH (p:Position)-[:GENERATED_SIGNAL]->(ds:DecorrelationSignal)
+WHERE ($positionId IS NULL OR p.id = $positionId) AND ds.at <= $asOf
+WITH o, p, ds, ds.at + duration({days: o.slaDays}) AS dueBy
+WITH o, p, ds, dueBy,
+     (EXISTS { MATCH (p)-[:CHANGED_TO]->(mc:MethodologyChange)-[:APPROVED_BY]->(a:Approval)
+               WHERE a.at <= coalesce(mc.effectiveAt, mc.at)
+                 AND coalesce(mc.effectiveAt, mc.at) >= ds.at - duration({days: o.slaDays})
+                 AND coalesce(mc.effectiveAt, mc.at) <= dueBy }
+      OR EXISTS { MATCH (p)-[:REVIEWED_BY]->(ipv:IPVReview)
+                  WHERE ipv.at >= ds.at AND ipv.at <= dueBy }) AS resolved
+WITH o, p, ds, dueBy,
+     CASE WHEN resolved THEN 'MET'
+          WHEN dueBy > $asOf THEN 'PENDING'
+          ELSE 'MISSED' END AS status
+RETURN o.id AS ruleId, o.name AS ruleName, o.severity AS severity,
+       o.requiredControl AS expectedControl, o.requiredByRole AS requiredByRole,
+       p.id AS positionId, ds.id AS triggerEventId, ds.at AS triggerAt,
+       'DecorrelationSignal' AS triggerLabel, dueBy,
+       null AS observedEventId, null AS observedAt, status

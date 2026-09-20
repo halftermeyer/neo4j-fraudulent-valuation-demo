@@ -36,6 +36,7 @@ import {
   type RequireCandidate,
 } from "../lib/scenarioQueries";
 import { captureCypher } from "../lib/companion";
+import { fetchWatchlist, type WatchlistRow } from "../lib/discoveryQueries";
 import { gapsComputedThisSession, onGapSessionChange } from "../lib/gapSession";
 import type { TlControl } from "../lib/timelineQuery";
 import { ExplainButton } from "./CompanionPanel";
@@ -70,6 +71,7 @@ function eventDetail(e: TimelineEvent): string | null {
       `unexplained ${(p.unexplainedPct * 100).toFixed(1)}%` +
         (typeof p.consecutiveDays === "number" ? ` over ${p.consecutiveDays}d` : ""),
     );
+  if (typeof p.correlation === "number") bits.push(`peer correlation ${p.correlation.toFixed(2)}`);
   if (p.kind) bits.push(String(p.kind));
   if (p.type) bits.push(String(p.type));
   if (p.outcome) bits.push(String(p.outcome));
@@ -638,6 +640,12 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [timelineFor, setTimelineFor] = useState<string | null>(null);
 
+  // watchlist entries written by the Discovery tab (empty unless its button ran)
+  const [watchlist, setWatchlist] = useState<WatchlistRow[]>([]);
+  useEffect(() => {
+    void fetchWatchlist().then(setWatchlist).catch(() => setWatchlist([]));
+  }, []);
+
   const refreshPattern = async () => {
     const p = await getPattern();
     setPattern(p);
@@ -706,6 +714,23 @@ function S4({ onOpenChronology }: { onOpenChronology: (id: string) => void }) {
           forming before the loss. Click a row to audit that position's chronology in S2.
         </GlossaryText>
       </div>
+      {watchlist.length > 0 && (
+        <div className="panel" data-testid="s4-watchlist">
+          <h2>Watchlist</h2>
+          <p className="hint">Written by Discovery — each entry carries its reason; Reset Discovery removes them.</p>
+          <table className="data-table">
+            <tbody>
+              {watchlist.map((w) => (
+                <tr className="clickable" key={w.positionId} onClick={() => onOpenChronology(w.positionId)}>
+                  <td><strong>{w.positionId}</strong></td>
+                  <td>{w.reason}</td>
+                  <td className="hint-inline">{w.addedAt?.slice(0, 10)} · chronology →</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="btn-row">
         <button className="demo-btn" data-testid="s4-run" disabled={busy} onClick={run}>
           Run read-across

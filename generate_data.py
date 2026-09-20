@@ -24,6 +24,7 @@ Deterministic: random.seed(42). Replayable via `make data`.
 
 import csv
 import json
+import math
 import os
 import random
 import shutil
@@ -454,7 +455,7 @@ def build_market_layer():
                     G.rel("market", "PRICE_OF", obs_id, f"INSTR-{cusip}")
                     prev_div = emit_proxy(obs_id, s["date"], s["date"][:7], s["ytm"], prev_div)
 
-    return chartable, proxy_ctx, emit_price_series
+    return chartable, proxy_ctx, emit_price_series, daily
 
 
 # ═════════════════════ LAYER 2 — synthetic governance ═══════════════════════
@@ -661,7 +662,11 @@ def simulate_position(p: dict, monthly_divergence: dict[str, list[tuple[date, in
         ym = me.isoformat()[:7]
         div = divs.get(ym, prev_div)
 
-        # monthly IPV review (the IPV cycle itself is an obligation-driven control)
+        # monthly IPV review (the IPV cycle itself is an obligation-driven control).
+        # The near-miss book's cycle goes QUIET during its stale-model episode —
+        # that silence is what leaves its decorrelation unresolved (R10 MISSED).
+        if pid == NEARMISS_ID and NEARMISS_IPV_QUIET_FROM <= me <= NEARMISS_IPV_QUIET_TO:
+            continue
         ipv = eid("IPV")
         G.event("governance", "IPVReview", ipv, pid, dt(me, 16),
                 divergenceBps=abs(div), outcome="within tolerance" if abs(div) <= r5_threshold else "exception")
@@ -1178,6 +1183,209 @@ def build_next_chains():
             G.rel(layer, "NEXT", a, b, timeDelta=delta)
 
 
+# ── weekly trader-mark series (Discovery panel 3 — peer decorrelation) ────────
+# Every held position books a weekly :Mark (the trader's own mark, NOT a market
+# print): honest books carry the last TRACE print forward with small noise;
+# POS-FP freezes at the stale model between the 2022 shock and its APPROVED
+# recalibration (decorrelates, then recorrelates); POS-TP drifts flat while its
+# peers move (decorrelates, never recorrelates). Chained per position with NEXT
+# like every event. Dedicated RNG: the main seeded stream must not shift.
+
+# a Friday — all positions share the weekly grid; starts where the daily TRACE
+# derivation starts (2021): before that every interpolated print is flat and the
+# common factor is degenerate by construction
+MARK_ANCHOR = date(2021, 1, 8)
+FP_FREEZE_FROM, FP_FREEZE_TO = date(2022, 9, 20), date(2022, 10, 19)
+
+# benign decorrelations on honest books (SME review): a stale model after the
+# 2022 regime break, then a PRE-APPROVED recalibration + post-change IPV — the
+# same signal fires and R10 evaluates it MET. Chosen deterministically below;
+# excluded from the gap holdout so the two evaluations never collide.
+BENIGN_FREEZE_FROM, BENIGN_FREEZE_TO = date(2022, 9, 23), date(2022, 10, 21)
+BENIGN_MC_AT, BENIGN_MC_APPROVED, BENIGN_MC_EFF = (
+    date(2022, 10, 18), date(2022, 10, 20), date(2022, 10, 25))
+BENIGN_IPV_AT = date(2022, 11, 2)
+
+# … and ONE live near-miss (SME review: "~5 rows, 2 MISSED"): an honest book
+# whose marks freeze while its IPV cycle goes quiet, with no recalibration —
+# R10 renders it MISSED like the confirmed case. Early detection, not autopsy.
+NEARMISS_FREEZE_FROM, NEARMISS_FREEZE_TO = date(2022, 3, 4), date(2022, 4, 15)
+NEARMISS_IPV_QUIET_FROM, NEARMISS_IPV_QUIET_TO = date(2022, 3, 1), date(2022, 5, 31)
+NEARMISS_ID: str | None = None  # set in main before simulate_position runs
+
+
+def pick_benign_decorr(positions: list[dict]) -> list[str]:
+    return sorted(p["id"] for p in positions
+                  if not p.get("scripted") and p.get("family") == "proxy-curve")[:2]
+
+
+def pick_nearmiss(positions: list[dict], benign: list[str]) -> str:
+    return sorted(p["id"] for p in positions
+                  if not p.get("scripted") and p.get("family") == "dealer-quote"
+                  and p["id"] not in benign)[0]
+
+
+def week_grid(start: date, end: date) -> list[date]:
+    d0 = MARK_ANCHOR + timedelta(days=((start - MARK_ANCHOR).days // 7 + 1) * 7)
+    out = []
+    d = d0
+    while d <= end:
+        out.append(d)
+        d += timedelta(days=7)
+    return out
+
+
+def build_mark_series(positions: list[dict], daily: dict[str, list[dict]],
+                      benign_ids: list[str]):
+    """Honest books are marked TO MODEL, and the models share the curve: the
+    weekly mark return is 0.8 × the common factor (mean move of all held
+    instruments' interpolated prints) + 0.2 × the book's own print drift +
+    noise. That is what makes peer correlation the norm — and its absence a
+    signal. POS-FP freezes at the stale model between the 2022 shock and its
+    APPROVED recalibration (decorrelates, then recorrelates: R10 MET by design)."""
+    mark_rng = random.Random(4242)
+
+    def make_interp(px: list[tuple[date, float]]):
+        dates = [d0 for d0, _ in px]
+
+        def interp(w: date) -> float:
+            i = bisect_left(dates, w)
+            if i == 0:
+                return px[0][1]
+            if i >= len(px):
+                return px[-1][1]
+            (d0, v0), (d1, v1) = px[i - 1], px[i]
+            return v0 + (v1 - v0) * (w - d0).days / max((d1 - d0).days, 1)
+
+        return interp
+
+    interps = {}
+    for p in positions:
+        px = [(date.fromisoformat(r["date"]), r["pr"])
+              for r in daily.get(p.get("cusip") or "", []) if r["pr"]]
+        if px:
+            interps[p["id"]] = make_interp(px)
+
+    # common weekly factor: mean log-move of the held instruments' interp prints
+    grid = week_grid(MARK_ANCHOR, GOV_END)
+    factor: dict[date, float] = {}
+    for w0, w1 in zip(grid, grid[1:]):
+        moves = []
+        for f in interps.values():
+            a, b = f(w0), f(w1)
+            if a > 0 and b > 0:
+                moves.append(math.log(b / a))
+        factor[w1] = sum(moves) / len(moves) if moves else 0.0
+
+    n = 0
+    for p in positions:
+        pid = p["id"]
+        f = interps.get(pid)
+        if f is None:
+            continue
+        weeks = week_grid(max(p["opened"], MARK_ANCHOR), GOV_END)
+        if not weeks:
+            continue
+        benign = pid in benign_ids
+        mark = f(weeks[0])
+        freeze_val: float | None = None
+        for k, w in enumerate(weeks):
+            if k > 0:
+                # marked to the SHARED model: the common factor is the mark's move;
+                # idiosyncrasy lives in the prints, not in an honest book's marks
+                r = factor.get(w, 0.0) + mark_rng.uniform(-0.0003, 0.0003)
+                mark = mark * math.exp(r)
+            frozen = ((pid == "POS-FP" and FP_FREEZE_FROM <= w <= FP_FREEZE_TO)
+                      or (benign and BENIGN_FREEZE_FROM <= w <= BENIGN_FREEZE_TO)
+                      or (pid == NEARMISS_ID and NEARMISS_FREEZE_FROM <= w <= NEARMISS_FREEZE_TO))
+            if frozen:
+                if freeze_val is None:
+                    freeze_val = mark
+                out = freeze_val  # stale model: the mark stops following the market
+            else:
+                freeze_val = None
+                out = mark
+            G.event("cases" if pid == "POS-FP" else "governance", "Mark",
+                    f"MK-{pid}-{w}", pid, dt(w, 17), clean=round(out, 3), source="trader mark")
+            n += 1
+
+    # POS-TP: tracks the shared model like everyone else UNTIL the marking drift
+    # starts (the case's Jan–Mar window, +10y) — then the book is held nearly
+    # flat while the peers move. The decorrelation signal therefore fires INSIDE
+    # the override series, never before the behaviour it detects.
+    tp_rng = random.Random(2424)
+    start = shift_years(date(2011, 7, 1), TP_CLOCK_OFFSET_YEARS)
+    drift_anchor = shift_years(date(2011, 12, 31), TP_CLOCK_OFFSET_YEARS)
+    transfer = shift_years(date(2012, 7, 20), TP_CLOCK_OFFSET_YEARS)
+    mark = 100.0
+    for k, w in enumerate(week_grid(start, transfer)):
+        if k > 0:
+            if w <= drift_anchor:
+                mark *= math.exp(factor.get(w, 0.0) + tp_rng.uniform(-0.0003, 0.0003))
+            else:
+                mark -= 0.6 * 7 / 30.4  # the slow bleed of the held marks
+                mark += tp_rng.uniform(-0.03, 0.03)
+        G.event("cases", "Mark", f"MK-POS-TP-{w}", "POS-TP", dt(w, 17),
+                clean=round(mark, 3), source="trader mark")
+        n += 1
+    print(f"  weekly marks: {n:,}")
+
+
+def build_benign_decorrelations(positions: list[dict], benign_ids: list[str]):
+    """The explained decorrelations (fix 2): each benign book gets a PRE-APPROVED
+    recalibration effective just after its stale-model episode + a post-change
+    IPV — so the same signal fires and the SAME gap query renders it MET."""
+    desk_of = {p["id"]: p["desk"] for p in positions}
+    for pid in benign_ids:
+        mc = eid("MCH")
+        G.event("governance", "MethodologyChange", mc, pid, dt(BENIGN_MC_AT),
+                kind="model recalibration after the regime break", formal=True,
+                effectiveAt=dt(BENIGN_MC_EFF))
+        G.rel("governance", "CHANGED_TO", pid, mc)
+        add_approval("governance", pid, mc, BENIGN_MC_APPROVED,
+                     independent_approver(desk_of[pid]), committee="COM-VAL",
+                     evidenced=True)
+        ipv = eid("IPV")
+        G.event("governance", "IPVReview", ipv, pid, dt(BENIGN_IPV_AT, 11),
+                divergenceBps=12, outcome="post-change validation")
+        G.rel("governance", "REVIEWED_BY", pid, ipv)
+
+
+def remove_gap_holdout(exclude: set[str]) -> list[dict]:
+    """Discovery panel-2 evaluation ground truth: for 4 non-case positions,
+    remove ALL trigger events of one rule each (the position genuinely had that
+    gap-heavy history; the trajectory similarity should still surface it from
+    the remaining events). Recorded in data/holdout_gaps.json; recall over these
+    four vs the chance baseline is shown next to the panel's result."""
+    plan = [("R3", "PriceOverride"), ("R4", "PriceOverride"),
+            ("R5", "IPVReview"), ("R6", "PnLSignal")]
+    taken: set[str] = set(exclude)  # never collide with the benign decorrelations
+    holdout = []
+    for rule_id, label in plan:
+        counts: dict[str, list[str]] = {}
+        for nid, n in G.nodes.items():
+            pid = n["props"].get("positionId")
+            if (label in n["labels"] and pid and pid.startswith("POS-")
+                    and pid not in ("POS-TP", "POS-FP") and pid not in taken):
+                # R5 triggers are the above-threshold reviews only
+                if label == "IPVReview" and (n["props"].get("divergenceBps") or 0) <= \
+                        obligations["R5"]["params"]["divergenceBps"]:
+                    continue
+                counts.setdefault(pid, []).append(nid)
+        if not counts:
+            continue
+        pid = sorted(counts, key=lambda k: (-len(counts[k]), k))[0]
+        taken.add(pid)
+        removed = sorted(counts[pid])
+        for nid in removed:
+            del G.nodes[nid]
+        G.rels = [r for r in G.rels if r["from"] not in removed and r["to"] not in removed]
+        holdout.append({"positionId": pid, "ruleId": rule_id,
+                        "removedLabel": label, "removedEventIds": removed})
+    (ROOT / "data" / "holdout_gaps.json").write_text(json.dumps(holdout, indent=2))
+    return holdout
+
+
 def remove_holdout() -> list[dict]:
     """Remove a few known Position->RiskAttribute links (never on POS-TP/POS-FP,
     never liquidityTier) and record them as S4 link-prediction ground truth."""
@@ -1226,6 +1434,8 @@ def emit_outputs(holdout: list[dict]):
     shutil.copytree(LAYERS, APP_DATA / "layers")
     shutil.copy(ROOT / "data" / "gap_query.cypher", APP_DATA / "gap_query.cypher")
     shutil.copy(ROOT / "data" / "holdout_links.json", APP_DATA / "holdout_links.json")
+    if (ROOT / "data" / "holdout_gaps.json").exists():
+        shutil.copy(ROOT / "data" / "holdout_gaps.json", APP_DATA / "holdout_gaps.json")
 
     # ── load_data.cypher (cypher-shell / MCP parity) ──
     out = ["// GENERATED by generate_data.py — do not edit. Replay with `make data`.",
@@ -1337,13 +1547,18 @@ def main():
     print(f"TP_CLOCK_OFFSET_YEARS = {TP_CLOCK_OFFSET_YEARS}")
     load_obligations()
     print("Layer 1: market (OSBAP + FITRS + FRED) ...")
-    chartable, proxy_ctx, emit_price_series = build_market_layer()
+    chartable, proxy_ctx, emit_price_series, daily_prices = build_market_layer()
     print(f"  instruments: {sum(1 for n in G.nodes.values() if 'Instrument' in n['labels'])}, "
           f"chartable: {len(chartable)}")
 
     print("Layer 2: governance ...")
     build_governance_static()
     positions = build_positions(chartable, proxy_ctx)
+    # Discovery panel-3 plants, chosen BEFORE simulation (the near-miss book's
+    # IPV cycle goes quiet during its stale-model episode)
+    global NEARMISS_ID
+    benign = pick_benign_decorr(positions)
+    NEARMISS_ID = pick_nearmiss(positions, benign)
     # held positions get the full daily TRACE series; the rest stay month-end
     emit_price_series({p["cusip"] for p in positions if p.get("cusip")})
     print(f"  market prices: {sum(1 for n in G.nodes.values() if 'MarketPrice' in n['labels']):,}")
@@ -1365,6 +1580,13 @@ def main():
     fp = next(p for p in positions if p["id"] == "POS-FP")
     build_fp_case(proxy_ctx, fp)
 
+    # weekly trader marks (Discovery panel 3) — dedicated RNGs, main stream intact
+    build_mark_series(positions, daily_prices, benign)
+    build_benign_decorrelations(positions, benign)
+    print(f"  benign decorrelations: {', '.join(benign)} · near-miss: {NEARMISS_ID}")
+
+    gap_holdout = remove_gap_holdout(set(benign) | {NEARMISS_ID})
+    print(f"  gap-holdout: {', '.join(h['positionId'] + '/' + h['ruleId'] for h in gap_holdout)}")
     annotate_event_prices()
     build_next_chains()
     holdout = remove_holdout()

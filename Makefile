@@ -27,8 +27,9 @@ video:            ## record + narrate + assemble dist/demo.mp4 from the demo-scr
 	uv run python scripts/record_demo.py $(VIDEO_FLAGS)
 	uv run python scripts/assemble_video.py
 
-test:             ## run the acceptance tests against the loaded database
+test:             ## run the acceptance tests against the loaded database + the TS FastPath mirror
 	uv run pytest tests/ -v
+	cd app && npx vitest run
 
 app:              ## run the React app (Vite dev server)
 	cd app && npm install && npm run dev

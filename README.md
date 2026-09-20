@@ -110,6 +110,23 @@ GEMINI_API_KEY=...          # Assistant tab + LLM test
   governance gaps** step runs the gap query + materialisation, shows counts per
   rule (MET/LATE/MISSED) and unlocks S1 for the session; Reset restores CSV
   defaults.
+- **Discovery** (behind the session-only **Technical** toggle — a hood to open for
+  technical audiences, never the executive demo) — *"Rules find what you described.
+  Structure finds what you didn't. Then structure becomes a rule."* Three panels,
+  each ending on a button that writes INTO the main flow, each showing its
+  evaluation next to its result, all removed by Reset Discovery:
+  **Approval circles** (communities of the weighted who-approves-whose-overrides
+  graph; circles without an independent control function highlighted → candidate
+  rule R-C1, badged, evaluated by nothing);
+  **Trajectories** (a faithful reimplementation of the published FastPath
+  algorithm — `scripts/fastpath.py` + TS mirror, proven against the published
+  worked example in `inputs/fastpath_worked_example.md` to 4 decimals; identity
+  basis so every dimension reads in words; holdout recall vs the chance baseline
+  stated on screen → S4 watchlist);
+  **Peer decorrelation** (weekly trader marks vs the peer group; exactly the two
+  encoded cases fire; → rule R10 that the SAME gap query then evaluates — TP
+  breaks it, FP is MET — and behaviour clusters as instrument-agnostic
+  RiskAttributes for S3/S4).
 - **Assistant** — not text-to-Cypher: 7 typed tools over the same query functions
   (`timeline`, `expected_controls`, `who_approved`, `divergence`, `read_across`,
   `policy_params`, `list_positions`), composed by Gemini; every generated Cypher
