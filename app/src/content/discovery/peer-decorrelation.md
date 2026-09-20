@@ -38,7 +38,7 @@ Decorrelation is **not** an accusation: POS-FP fires exactly like the case, beca
 
 # Why "the IPV ran" is not a control
 
-In the public case the quarter-end valuation review **occurred** — and **upheld** the marks (a divergence of 600 bps, judged "within tolerance"). That is why R10's second clause does not accept mere occurrence: a review with outcome `no finding`, `within tolerance`, or with no evidence attached, satisfies nothing. This is R5's lesson applied to a structure-born rule — **control executed ≠ control effective** — and it is what keeps a monthly IPV heartbeat from silently exculpating every decorrelation on real data.
+In the public case the quarter-end valuation review **occurred**, recorded the difference — the public record's **$512m** between midpoint and used prices, cited with its source in `inputs/public_true_positive_2012.csv` — and **upheld** the marks. That is why R10's second clause does not accept mere occurrence: a review with outcome `no finding`, `within tolerance`, or with no evidence attached, satisfies nothing. This is R5's lesson applied to a structure-born rule — **control executed ≠ control effective** — and it is what keeps a monthly IPV heartbeat from silently exculpating every decorrelation on real data.
 
 ---
 

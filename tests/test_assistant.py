@@ -13,6 +13,8 @@ right events in the right order and the right ControlObligations.
 import json
 import os
 import sys
+import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -168,16 +170,34 @@ def _ask_model() -> str:
 @pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason="GEMINI_API_KEY not set")
 def test_llm_reconstructs_chronology_and_names_controls():
     # the model's phrasing is stochastic: one retry for pure answer-shape variance
-    # (same policy as the video recorder), diagnostics printed on the final failure
+    # (same policy as the video recorder), diagnostics printed on the final failure.
+    # The retry RATE is surfaced in the make-test output (pytest warning) and
+    # appended to dist/gemini_chronology_attempts.log — if first-pass failures
+    # exceed ~1 in 10, tighten the Assistant system prompt, not this test.
     last_error: AssertionError | None = None
     for attempt in range(2):
         try:
             _assert_chronology(_ask_model().lower())
+            _log_attempt(attempt + 1, passed=True)
+            if attempt > 0:
+                warnings.warn(
+                    f"gemini chronology test needed a retry (passed on attempt {attempt + 1}) "
+                    "— watch dist/gemini_chronology_attempts.log; >1/10 first-pass failures "
+                    "means the Assistant system prompt needs tightening",
+                    stacklevel=1)
             return
         except AssertionError as e:
             last_error = e
             print(f"attempt {attempt + 1} failed: {e}", flush=True)
+    _log_attempt(2, passed=False)
     raise last_error  # type: ignore[misc]
+
+
+def _log_attempt(attempts: int, passed: bool) -> None:
+    log = ROOT / "dist" / "gemini_chronology_attempts.log"
+    log.parent.mkdir(exist_ok=True)
+    with open(log, "a") as f:
+        f.write(f"{datetime.now(timezone.utc).isoformat()} attempts={attempts} passed={passed}\n")
 
 
 def _assert_chronology(text: str) -> None:
